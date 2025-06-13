@@ -77,7 +77,7 @@ client.on('messageCreate', async (message) => {
                 connection: null,
                 songs: [],
                 player: player,
-                volume: 0.25, // Default volume
+                volume: 0.10, // Default volume
                 playing: true
             };
 
