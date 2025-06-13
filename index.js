@@ -23,7 +23,7 @@ const client = new Client({
 });
 
 // A Map to store queues for different guilds.
-// Key: guildId, Value: { textChannel, voiceChannel, connection, songs: [], player, volume, playing }
+// Key: guildId, Value: { textChannel, voiceChannel, connection, songs: [], player, volume, playing, loop }
 const serverQueue = new Map();
 
 client.once('ready', () => {
@@ -78,7 +78,8 @@ client.on('messageCreate', async (message) => {
                 songs: [],
                 player: player,
                 volume: 0.10, // Default volume
-                playing: true // Keep track of whether a song is actively playing or paused
+                playing: true, // Keep track of whether a song is actively playing or paused
+                loop: false // Add loop property, default to false
             };
 
             serverQueue.set(message.guild.id, queueContruct);
@@ -95,13 +96,20 @@ client.on('messageCreate', async (message) => {
 
                 // Handle player status changes
                 player.on(AudioPlayerStatus.Idle, () => {
-                    queueContruct.songs.shift(); // Remove the finished song
-                    if (queueContruct.songs.length > 0) {
+                    if (queueContruct.loop && queueContruct.songs.length > 0) {
+                        // If loop is true, re-add the current song to the front of the queue
+                        // and play it again without shifting it out.
                         play(message.guild, queueContruct.songs[0]);
+                        message.channel.send(`🔁 Looping **${queueContruct.songs[0].title}**.`);
                     } else {
-                        queueContruct.connection.destroy();
-                        serverQueue.delete(message.guild.id);
-                        message.channel.send('⏹️ Queue finished. Leaving voice channel.');
+                        queueContruct.songs.shift(); // Remove the finished song
+                        if (queueContruct.songs.length > 0) {
+                            play(message.guild, queueContruct.songs[0]);
+                        } else {
+                            queueContruct.connection.destroy();
+                            serverQueue.delete(message.guild.id);
+                            message.channel.send('⏹️ Queue finished. Leaving voice channel.');
+                        }
                     }
                 });
 
@@ -139,6 +147,11 @@ client.on('messageCreate', async (message) => {
             return message.channel.send('❌ You must be in the same voice channel as the bot to skip music!');
         }
 
+        // If looping, disable it before skipping to prevent looping the skipped song
+        if (queueContruct.loop) {
+            queueContruct.loop = false;
+            message.channel.send('🔁 Loop disabled due to skip.');
+        }
         queueContruct.player.stop(); // This will trigger the 'idle' event, playing the next song
         message.channel.send('⏭️ Skipped the current song.');
     }
@@ -191,6 +204,20 @@ client.on('messageCreate', async (message) => {
         queueContruct.connection.destroy(); // Destroy the connection
         serverQueue.delete(message.guild.id);
         message.channel.send('⏹️ Stopped playback and left the channel.');
+    }
+    // --- New !loop command handler ---
+    else if (message.content.startsWith('!loop')) {
+        const queueContruct = serverQueue.get(message.guild.id);
+
+        if (!queueContruct || !queueContruct.songs.length) {
+            return message.channel.send('❌ There is no song currently playing to loop!');
+        }
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+            return message.channel.send('❌ You must be in the same voice channel as the bot to toggle looping!');
+        }
+
+        queueContruct.loop = !queueContruct.loop; // Toggle the loop state
+        message.channel.send(`🔁 Looping is now **${queueContruct.loop ? 'enabled' : 'disabled'}**.`);
     }
 });
 
