@@ -23,7 +23,7 @@ const client = new Client({
 });
 
 // A Map to store queues for different guilds.
-// Key: guildId, Value: { textChannel, voiceChannel, connection, songs: [], player }
+// Key: guildId, Value: { textChannel, voiceChannel, connection, songs: [], player, volume, playing }
 const serverQueue = new Map();
 
 client.once('ready', () => {
@@ -78,7 +78,7 @@ client.on('messageCreate', async (message) => {
                 songs: [],
                 player: player,
                 volume: 0.10, // Default volume
-                playing: true
+                playing: true // Keep track of whether a song is actively playing or paused
             };
 
             serverQueue.set(message.guild.id, queueContruct);
@@ -141,6 +141,40 @@ client.on('messageCreate', async (message) => {
 
         queueContruct.player.stop(); // This will trigger the 'idle' event, playing the next song
         message.channel.send('⏭️ Skipped the current song.');
+    }
+    // Handler for the !pause command
+    else if (message.content.startsWith('!pause')) {
+        const queueContruct = serverQueue.get(message.guild.id);
+        if (!queueContruct || queueContruct.songs.length === 0) {
+            return message.channel.send('❌ There is no music currently playing to pause!');
+        }
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+            return message.channel.send('❌ You must be in the same voice channel as the bot to pause music!');
+        }
+
+        if (queueContruct.player.state.status === AudioPlayerStatus.Playing) {
+            queueContruct.player.pause();
+            message.channel.send('⏸️ Music paused.');
+        } else {
+            message.channel.send('❌ Music is not currently playing or is already paused.');
+        }
+    }
+    // Handler for the !resume command
+    else if (message.content.startsWith('!resume')) {
+        const queueContruct = serverQueue.get(message.guild.id);
+        if (!queueContruct || queueContruct.songs.length === 0) {
+            return message.channel.send('❌ There is no music to resume!');
+        }
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+            return message.channel.send('❌ You must be in the same voice channel as the bot to resume music!');
+        }
+
+        if (queueContruct.player.state.status === AudioPlayerStatus.Paused) {
+            queueContruct.player.unpause();
+            message.channel.send('▶️ Music resumed.');
+        } else {
+            message.channel.send('❌ Music is not paused.');
+        }
     }
     // Handler for the !stop command
     else if (message.content.startsWith('!stop')) {
