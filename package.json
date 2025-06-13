@@ -1,0 +1,19 @@
+{
+  "name": "chocolatedude",
+  "version": "1.0.0",
+  "description": "A dude made of chocolate",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@discordjs/voice": "^0.18.0",
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.5.0",
+    "yt-search": "^2.13.1",
+    "ytdl-core": "npm:@distube/ytdl-core@^4.16.12"
+  }
+}
