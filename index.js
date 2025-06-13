@@ -205,7 +205,7 @@ client.on('messageCreate', async (message) => {
         serverQueue.delete(message.guild.id);
         message.channel.send('⏹️ Stopped playback and left the channel.');
     }
-    // --- New !loop command handler ---
+    // !loop command handler
     else if (message.content.startsWith('!loop')) {
         const queueContruct = serverQueue.get(message.guild.id);
 
@@ -218,6 +218,23 @@ client.on('messageCreate', async (message) => {
 
         queueContruct.loop = !queueContruct.loop; // Toggle the loop state
         message.channel.send(`🔁 Looping is now **${queueContruct.loop ? 'enabled' : 'disabled'}**.`);
+    }
+    // --- New !queue command handler ---
+    else if (message.content.startsWith('!queue')) {
+        const queueContruct = serverQueue.get(message.guild.id);
+
+        if (!queueContruct || queueContruct.songs.length === 0) {
+            return message.channel.send('ℹ️ The queue is currently empty.');
+        }
+
+        let queueMessage = '🎶 **Current Music Queue:**\n';
+        queueContruct.songs.forEach((song, index) => {
+            queueMessage += `${index === 0 ? '▶️ **(Now Playing)**' : `${index}.`} ${song.title}\n`;
+        });
+
+        queueMessage += `\n🔁 Looping: **${queueContruct.loop ? 'Enabled' : 'Disabled'}**`;
+
+        message.channel.send(queueMessage);
     }
 });
 
