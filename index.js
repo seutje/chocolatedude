@@ -10,7 +10,8 @@ const {
     getVoiceConnection
 } = require('@discordjs/voice');
 const ytdl = require('ytdl-core');
-const ytSearch = require('yt-search');
+// Import the new package instead of yt-search
+const youtubeSearch = require('youtube-search-without-api-key');
 
 // Create a new client instance
 const client = new Client({
@@ -51,9 +52,16 @@ client.on('messageCreate', async (message) => {
             return;
         }
 
-        // Search YouTube for the query
-        const searchResult = await ytSearch(query);
-        const video = searchResult.videos.length ? searchResult.videos[0] : null;
+        // Search YouTube for the query using the new package
+        let video = null;
+        try {
+            const searchResults = await youtubeSearch.search(query);
+            video = searchResults.length ? searchResults[0] : null; // Get the first result
+        } catch (error) {
+            console.error('Error during YouTube search:', error);
+            message.channel.send('❌ An error occurred during the search. Please try again.');
+            return;
+        }
 
         if (!video) {
             message.channel.send('❌ No results found.');
@@ -66,7 +74,8 @@ client.on('messageCreate', async (message) => {
         const song = {
             title: video.title,
             url: video.url,
-            duration: video.duration.timestamp // Add duration for potential future use
+            // The new package does not provide duration directly, so removed for now.
+            // If duration is critical, an additional fetch or different package might be needed.
         };
 
         if (!queueContruct) {
@@ -120,7 +129,10 @@ client.on('messageCreate', async (message) => {
                     if (queueContruct.songs.length > 0) {
                         play(message.guild, queueContruct.songs[0]);
                     } else {
-                        queueContruct.connection.destroy();
+                        // Check if connection exists before destroying, as it might have already been destroyed
+                        if (queueContruct.connection && !queueContruct.connection.destroyed) {
+                            queueContruct.connection.destroy();
+                        }
                         serverQueue.delete(message.guild.id);
                         message.channel.send('⏹️ Queue finished. Leaving voice channel.');
                     }
