@@ -276,14 +276,30 @@ client.on('messageCreate', async (message) => {
             return message.channel.send('ℹ️ The queue is currently empty.');
         }
 
-        let queueMessage = '🎶 **Current Music Queue:**\n';
-        queueContruct.songs.forEach((song, index) => {
-            queueMessage += `${index === 0 ? '▶️ **(Now Playing)**' : `${index}.`} ${song.title}\n`;
-        });
+        const MAX_CHARS = 1900; // Keep a buffer below 2000 for safety
+        let messagesToSend = [];
+        let currentMessage = '🎶 **Current Music Queue:**\n';
 
-        queueMessage += `\n🔁 Looping: **${queueContruct.loop ? 'Enabled' : 'Disabled'}**`;
+        for (let i = 0; i < queueContruct.songs.length; i++) {
+            const song = queueContruct.songs[i];
+            const line = `${i === 0 ? '▶️ **(Now Playing)**' : `${i + 1}.`} ${song.title}\n`;
 
-        message.channel.send(queueMessage);
+            if (currentMessage.length + line.length > MAX_CHARS) {
+                messagesToSend.push(currentMessage);
+                currentMessage = '🎶 **Current Music Queue (continued):**\n' + line;
+            } else {
+                currentMessage += line;
+            }
+        }
+        messagesToSend.push(currentMessage); // Add the last accumulated message
+
+        // Append looping status to the final message
+        messagesToSend[messagesToSend.length - 1] += `\n🔁 Looping: **${queueContruct.loop ? 'Enabled' : 'Disabled'}**`;
+
+        // Send all messages
+        for (const msg of messagesToSend) {
+            await message.channel.send(msg);
+        }
     }
     // --- New !search command handler ---
     else if (message.content.startsWith('!search')) {
