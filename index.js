@@ -203,10 +203,10 @@ client.on('messageCreate', async (message) => {
             return message.channel.send('❌ You must be in the same voice channel as the bot to skip music!');
         }
 
-        // If looping, disable it before skipping to prevent looping the skipped song
-        if (queueContruct.loop !== 'none') { // If any loop is active
+        // Only disable looping if it's set to 'single', preserve 'all'
+        if (queueContruct.loop === 'single') {
             queueContruct.loop = 'none';
-            message.channel.send('🔁 Looping disabled due to skip.');
+            message.channel.send('🔁 Single song looping disabled due to skip.');
         }
         queueContruct.player.stop(); // This will trigger the 'idle' event, playing the next song
         message.channel.send('⏭️ Skipped the current song.');
