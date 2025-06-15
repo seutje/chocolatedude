@@ -27,6 +27,7 @@ const client = new Client({
 
 // A Map to store queues for different guilds.
 // Key: guildId, Value: { textChannel, voiceChannel, connection, songs: [], player, volume, playing, loop }
+// 'loop' can be 'none', 'single', or 'all'
 const serverQueue = new Map();
 
 client.once('ready', () => {
@@ -115,7 +116,7 @@ client.on('messageCreate', async (message) => {
                 player: player,
                 volume: 0.10, // Default volume
                 playing: true, // Keep track of whether a song is actively playing or paused
-                loop: false // Add loop property, default to false
+                loop: 'none' // Initialize loop status to 'none'
             };
 
             serverQueue.set(message.guild.id, queueContruct);
@@ -132,12 +133,18 @@ client.on('messageCreate', async (message) => {
 
                 // Handle player status changes
                 player.on(AudioPlayerStatus.Idle, () => {
-                    if (queueContruct.loop && queueContruct.songs.length > 0) {
-                        // If loop is true, re-add the current song to the front of the queue
-                        // and play it again without shifting it out.
+                    if (queueContruct.loop === 'single' && queueContruct.songs.length > 0) {
+                        // If looping single, re-add the current song and play it again
                         play(message.guild, queueContruct.songs[0]);
                         message.channel.send(`🔁 Looping **${queueContruct.songs[0].title}**.`);
-                    } else {
+                    } else if (queueContruct.loop === 'all' && queueContruct.songs.length > 0) {
+                        // If looping all, move the finished song to the end of the queue
+                        const finishedSong = queueContruct.songs.shift();
+                        queueContruct.songs.push(finishedSong);
+                        play(message.guild, queueContruct.songs[0]);
+                        message.channel.send(`🔁 Looping entire queue. Now playing: **${queueContruct.songs[0].title}**.`);
+                    }
+                    else {
                         queueContruct.songs.shift(); // Remove the finished song
                         if (queueContruct.songs.length > 0) {
                             play(message.guild, queueContruct.songs[0]);
@@ -197,9 +204,9 @@ client.on('messageCreate', async (message) => {
         }
 
         // If looping, disable it before skipping to prevent looping the skipped song
-        if (queueContruct.loop) {
-            queueContruct.loop = false;
-            message.channel.send('🔁 Loop disabled due to skip.');
+        if (queueContruct.loop !== 'none') { // If any loop is active
+            queueContruct.loop = 'none';
+            message.channel.send('🔁 Looping disabled due to skip.');
         }
         queueContruct.player.stop(); // This will trigger the 'idle' event, playing the next song
         message.channel.send('⏭️ Skipped the current song.');
@@ -257,6 +264,9 @@ client.on('messageCreate', async (message) => {
     // !loop command handler
     else if (message.content.startsWith('!loop')) {
         const queueContruct = serverQueue.get(message.guild.id);
+        const args = message.content.split(' ');
+        const loopCommand = args[0]; // e.g., "!loop"
+        const loopType = args[1] ? args[1].toLowerCase() : null; // e.g., "all", "single"
 
         if (!queueContruct || !queueContruct.songs.length) {
             return message.channel.send('❌ There is no song currently playing to loop!');
@@ -265,8 +275,29 @@ client.on('messageCreate', async (message) => {
             return message.channel.send('❌ You must be in the same voice channel as the bot to toggle looping!');
         }
 
-        queueContruct.loop = !queueContruct.loop; // Toggle the loop state
-        message.channel.send(`🔁 Looping is now **${queueContruct.loop ? 'enabled' : 'disabled'}**.`);
+        if (loopType === 'all') {
+            queueContruct.loop = 'all';
+            message.channel.send('🔁 Looping: **Entire queue** is now enabled.');
+        } else if (loopType === 'single') {
+            queueContruct.loop = 'single';
+            message.channel.send('🔁 Looping: **Single song** is now enabled.');
+        } else {
+            // Toggle logic for !loop with no arguments
+            switch (queueContruct.loop) {
+                case 'none':
+                    queueContruct.loop = 'single';
+                    message.channel.send('🔁 Looping: **Single song** is now enabled.');
+                    break;
+                case 'single':
+                    queueContruct.loop = 'all';
+                    message.channel.send('🔁 Looping: **Entire queue** is now enabled.');
+                    break;
+                case 'all':
+                    queueContruct.loop = 'none';
+                    message.channel.send('🔁 Looping: **Disabled**.');
+                    break;
+            }
+        }
     }
     // --- New !queue command handler ---
     else if (message.content.startsWith('!queue')) {
@@ -282,8 +313,10 @@ client.on('messageCreate', async (message) => {
 
         for (let i = 0; i < queueContruct.songs.length; i++) {
             const song = queueContruct.songs[i];
+            // Adjust index to be 1-based for display for all songs
             const line = `${i === 0 ? '▶️ **(Now Playing)**' : `${i + 1}.`} ${song.title}\n`;
 
+            // If adding the next line exceeds MAX_CHARS, push currentMessage and start a new one
             if (currentMessage.length + line.length > MAX_CHARS) {
                 messagesToSend.push(currentMessage);
                 currentMessage = '🎶 **Current Music Queue (continued):**\n' + line;
@@ -293,8 +326,24 @@ client.on('messageCreate', async (message) => {
         }
         messagesToSend.push(currentMessage); // Add the last accumulated message
 
+        // Determine the loop status string
+        let loopStatusString;
+        switch (queueContruct.loop) {
+            case 'none':
+                loopStatusString = 'Disabled';
+                break;
+            case 'single':
+                loopStatusString = 'Enabled (Single Song)';
+                break;
+            case 'all':
+                loopStatusString = 'Enabled (Full Queue)';
+                break;
+            default:
+                loopStatusString = 'Unknown';
+        }
+
         // Append looping status to the final message
-        messagesToSend[messagesToSend.length - 1] += `\n🔁 Looping: **${queueContruct.loop ? 'Enabled' : 'Disabled'}**`;
+        messagesToSend[messagesToSend.length - 1] += `\n🔁 Looping: **${loopStatusString}**`;
 
         // Send all messages
         for (const msg of messagesToSend) {
