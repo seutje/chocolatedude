@@ -377,6 +377,38 @@ client.on('messageCreate', async (message) => {
             message.channel.send('❌ An error occurred while performing the search. Please try again.');
         }
     }
+    // --- New !shuffle command handler ---
+    else if (message.content.startsWith('!shuffle')) {
+        const queueContruct = serverQueue.get(message.guild.id);
+
+        if (!queueContruct || queueContruct.songs.length <= 1) {
+            return message.channel.send('❌ Not enough songs in the queue to shuffle!');
+        }
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+            return message.channel.send('❌ You must be in the same voice channel as the bot to shuffle music!');
+        }
+
+        // Get the currently playing song
+        const currentSong = queueContruct.songs.shift();
+
+        // Shuffle the rest of the queue using Fisher-Yates (Knuth) shuffle algorithm
+        let currentIndex = queueContruct.songs.length;
+        let randomIndex;
+
+        while (currentIndex !== 0) {
+            randomIndex = Math.floor(Math.random() * currentIndex);
+            currentIndex--;
+
+            // And swap it with the current element.
+            [queueContruct.songs[currentIndex], queueContruct.songs[randomIndex]] = [
+                queueContruct.songs[randomIndex], queueContruct.songs[currentIndex]];
+        }
+
+        // Put the current song back at the beginning
+        queueContruct.songs.unshift(currentSong);
+
+        message.channel.send('🔀 Queue has been shuffled!');
+    }
 });
 
 /**
