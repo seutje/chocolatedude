@@ -12,6 +12,8 @@ const {
 const ytdl = require('ytdl-core');
 // Import the new package instead of yt-search
 const youtubeSearch = require('youtube-search-without-api-key');
+// Import ytpl for playlist support
+const ytpl = require('ytpl');
 
 // Create a new client instance
 const client = new Client({
@@ -41,7 +43,7 @@ client.on('messageCreate', async (message) => {
         const query = args.join(' ');
 
         if (!query) {
-            message.channel.send('❌ Please provide search terms.');
+            message.channel.send('❌ Please provide search terms or a YouTube URL.');
             return;
         }
 
@@ -52,31 +54,56 @@ client.on('messageCreate', async (message) => {
             return;
         }
 
-        // Search YouTube for the query using the new package
-        let video = null;
+        let songsToAdd = []; // Array to hold songs fetched from either single video or playlist
+        let isPlaylist = false;
+
         try {
-            const searchResults = await youtubeSearch.search(query);
-            video = searchResults.length ? searchResults[0] : null; // Get the first result
+            // Check if the query is a YouTube playlist URL or ID
+            const playlistId = await ytpl.getPlaylistID(query); // Tries to extract ID from URL or directly validates ID
+            if (playlistId) {
+                isPlaylist = true;
+                message.channel.send('⏳ Fetching playlist, please wait...');
+                const playlist = await ytpl(playlistId, { limit: 50 }); // Fetch up to 50 videos
+                if (playlist.items.length === 0) {
+                    message.channel.send('❌ No videos found in this playlist, or the playlist is empty/private.');
+                    return;
+                }
+                songsToAdd = playlist.items.map(item => ({
+                    title: item.title,
+                    url: item.url,
+                }));
+                // Limit to 50 songs as requested
+                if (songsToAdd.length > 50) {
+                    songsToAdd = songsToAdd.slice(0, 50);
+                    message.channel.send(`⚠️ Playlist contains more than 50 videos. Only the first 50 will be added.`);
+                }
+            } else {
+                // If not a playlist, search for a single video
+                const searchResults = await youtubeSearch.search(query);
+                const video = searchResults.length ? searchResults[0] : null;
+
+                if (!video) {
+                    message.channel.send('❌ No results found for your query.');
+                    return;
+                }
+                songsToAdd.push({
+                    title: video.title,
+                    url: video.url,
+                });
+            }
         } catch (error) {
-            console.error('Error during YouTube search:', error);
-            message.channel.send('❌ An error occurred during the search. Please try again.');
+            console.error('Error during YouTube search or playlist fetch:', error);
+            message.channel.send('❌ An error occurred during the search or playlist fetch. Please try again or check the URL.');
             return;
         }
 
-        if (!video) {
-            message.channel.send('❌ No results found.');
+        if (songsToAdd.length === 0) {
+            message.channel.send('❌ No valid videos were found to add to the queue.');
             return;
         }
 
         // Get the queue for the current guild
         let queueContruct = serverQueue.get(message.guild.id);
-
-        const song = {
-            title: video.title,
-            url: video.url,
-            // The new package does not provide duration directly, so removed for now.
-            // If duration is critical, an additional fetch or different package might be needed.
-        };
 
         if (!queueContruct) {
             const player = createAudioPlayer();
@@ -92,7 +119,7 @@ client.on('messageCreate', async (message) => {
             };
 
             serverQueue.set(message.guild.id, queueContruct);
-            queueContruct.songs.push(song);
+            queueContruct.songs.push(...songsToAdd); // Add all fetched songs
 
             try {
                 const connection = joinVoiceChannel({
@@ -139,14 +166,24 @@ client.on('messageCreate', async (message) => {
                 });
 
                 play(message.guild, queueContruct.songs[0]);
+                if (isPlaylist) {
+                    message.channel.send(`🎶 Added **${songsToAdd.length}** songs from the playlist to the queue! Now playing: **${queueContruct.songs[0].title}**`);
+                } else {
+                    message.channel.send(`🎵 Now playing: **${queueContruct.songs[0].title}**`);
+                }
+
             } catch (err) {
                 console.error(err);
                 serverQueue.delete(message.guild.id);
                 message.channel.send('❌ Could not join the voice channel!');
             }
         } else {
-            queueContruct.songs.push(song);
-            message.channel.send(`🎵 **${song.title}** has been added to the queue!`);
+            queueContruct.songs.push(...songsToAdd);
+            if (isPlaylist) {
+                message.channel.send(`🎵 Added **${songsToAdd.length}** songs from the playlist to the queue!`);
+            } else {
+                message.channel.send(`🎵 **${songsToAdd[0].title}** has been added to the queue!`);
+            }
         }
     }
     // Handler for the !skip command
@@ -291,6 +328,7 @@ function play(guild, song) {
         return;
     }
 
+    // Increased highWaterMark to 2^26 (64 MB)
     const stream = ytdl(song.url, { filter: 'audioonly', highWaterMark: 1 << 26 });
     const resource = createAudioResource(stream, { inlineVolume: true });
     resource.volume.setVolume(queueContruct.volume);
