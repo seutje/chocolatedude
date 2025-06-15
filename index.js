@@ -59,27 +59,38 @@ client.on('messageCreate', async (message) => {
         let isPlaylist = false;
 
         try {
-            // Check if the query is a YouTube playlist URL or ID
-            const playlistId = await ytpl.getPlaylistID(query); // Tries to extract ID from URL or directly validates ID
-            if (playlistId) {
-                isPlaylist = true;
-                message.channel.send('⏳ Fetching playlist, please wait...');
-                const playlist = await ytpl(playlistId, { limit: 50 }); // Fetch up to 50 videos
-                if (playlist.items.length === 0) {
-                    message.channel.send('❌ No videos found in this playlist, or the playlist is empty/private.');
-                    return;
-                }
-                songsToAdd = playlist.items.map(item => ({
-                    title: item.title,
-                    url: item.url,
-                }));
-                // Limit to 50 songs as requested
-                if (songsToAdd.length > 50) {
-                    songsToAdd = songsToAdd.slice(0, 50);
-                    message.channel.send(`⚠️ Playlist contains more than 50 videos. Only the first 50 will be added.`);
+            // Step 1: Determine if it's a URL or a search query
+            if (query.startsWith('http')) {
+                // It's a URL, now check if it's a playlist
+                if (query.includes('list=')) {
+                    // It's likely a playlist URL
+                    isPlaylist = true;
+                    message.channel.send('⏳ Fetching playlist, please wait...');
+                    const playlist = await ytpl(query, { limit: 50 }); // Fetch up to 50 videos
+                    if (playlist.items.length === 0) {
+                        message.channel.send('❌ No videos found in this playlist, or the playlist is empty/private.');
+                        return;
+                    }
+                    songsToAdd = playlist.items.map(item => ({
+                        title: item.title,
+                        url: item.url,
+                    }));
+                    // Limit to 50 songs as requested
+                    if (songsToAdd.length > 50) {
+                        songsToAdd = songsToAdd.slice(0, 50);
+                        message.channel.send(`⚠️ Playlist contains more than 50 videos. Only the first 50 will be added.`);
+                    }
+                } else {
+                    // It's a single video URL
+                    message.channel.send('⏳ Fetching video info, please wait...');
+                    const videoInfo = await ytdl.getInfo(query);
+                    songsToAdd.push({
+                        title: videoInfo.videoDetails.title,
+                        url: videoInfo.videoDetails.video_url,
+                    });
                 }
             } else {
-                // If not a playlist, search for a single video
+                // It's a search query
                 const searchResults = await youtubeSearch.search(query);
                 const video = searchResults.length ? searchResults[0] : null;
 
@@ -93,8 +104,8 @@ client.on('messageCreate', async (message) => {
                 });
             }
         } catch (error) {
-            console.error('Error during YouTube search or playlist fetch:', error);
-            message.channel.send('❌ An error occurred during the search or playlist fetch. Please try again or check the URL.');
+            console.error('Error during YouTube search, playlist fetch, or video info retrieval:', error);
+            message.channel.send('❌ An error occurred. Please try again or check the URL/search terms.');
             return;
         }
 
