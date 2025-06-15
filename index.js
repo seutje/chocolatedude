@@ -420,6 +420,47 @@ client.on('messageCreate', async (message) => {
 
         message.channel.send('🔀 Queue has been shuffled!');
     }
+    // --- New !remove command handler ---
+    else if (message.content.startsWith('!remove')) {
+        const queueContruct = serverQueue.get(message.guild.id);
+        const args = message.content.split(' ').slice(1);
+        const indexToRemove = parseInt(args[0]);
+
+        if (!queueContruct || queueContruct.songs.length === 0) {
+            return message.channel.send('❌ The queue is empty. Nothing to remove!');
+        }
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+            return message.channel.send('❌ You must be in the same voice channel as the bot to remove music!');
+        }
+
+        if (isNaN(indexToRemove) || indexToRemove < 1) {
+            return message.channel.send('❌ Please provide a valid song number to remove (e.g., `!remove 2`).');
+        }
+
+        if (indexToRemove === 1) {
+            // If index is 1, it means skip the current song
+            if (queueContruct.loop === 'single') {
+                queueContruct.loop = 'none';
+                message.channel.send('🔁 Single song looping disabled due to skip.');
+            }
+            queueContruct.player.stop(); // This will trigger the 'idle' event, playing the next song
+            message.channel.send('🗑️ Skipped the current song.');
+        } else {
+            // Adjust for 0-based array index (user input is 1-based)
+            const actualIndex = indexToRemove - 1;
+
+            if (actualIndex >= queueContruct.songs.length) {
+                return message.channel.send('❌ That song number does not exist in the queue.');
+            }
+
+            const removedSong = queueContruct.songs.splice(actualIndex, 1);
+            if (removedSong.length > 0) {
+                message.channel.send(`🗑️ Removed **${removedSong[0].title}** from the queue.`);
+            } else {
+                message.channel.send('❌ Could not remove the song. Please try again.');
+            }
+        }
+    }
 });
 
 /**
