@@ -34,6 +34,31 @@ client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
 });
 
+/**
+ * Formats a duration in seconds into a MM:SS or HH:MM:SS string.
+ * @param {number} totalSeconds The total number of seconds.
+ * @returns {string} The formatted duration string.
+ */
+function formatDuration(totalSeconds) {
+    if (isNaN(totalSeconds) || totalSeconds === null) return 'N/A';
+    totalSeconds = Math.floor(totalSeconds); // Ensure integer
+
+    const hours = Math.floor(totalSeconds / 3600);
+    totalSeconds %= 3600;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    const parts = [];
+    if (hours > 0) {
+        parts.push(String(hours));
+    }
+    parts.push(String(minutes).padStart(2, '0'));
+    parts.push(String(seconds).padStart(2, '0'));
+
+    return parts.join(':');
+}
+
+
 client.on('messageCreate', async (message) => {
     // Ignore bots
     if (message.author.bot) return;
@@ -74,6 +99,7 @@ client.on('messageCreate', async (message) => {
                     songsToAdd = playlist.items.map(item => ({
                         title: item.title,
                         url: item.url,
+                        duration: item.duration // ytpl provides duration as a string like "MM:SS"
                     }));
                     // Limit to 50 songs as requested
                     if (songsToAdd.length > 50) {
@@ -87,10 +113,12 @@ client.on('messageCreate', async (message) => {
                     songsToAdd.push({
                         title: videoInfo.videoDetails.title,
                         url: videoInfo.videoDetails.video_url,
+                        duration: formatDuration(videoInfo.videoDetails.lengthSeconds) // Format seconds to MM:SS
                     });
                 }
             } else {
                 // It's a search query
+                message.channel.send('⏳ Searching for video, please wait...');
                 const searchResults = await youtubeSearch.search(query);
                 const video = searchResults.length ? searchResults[0] : null;
 
@@ -98,14 +126,17 @@ client.on('messageCreate', async (message) => {
                     message.channel.send('❌ No results found for your query.');
                     return;
                 }
+                // For search results, we need to fetch info via ytdl to get duration
+                const videoInfo = await ytdl.getInfo(video.url);
                 songsToAdd.push({
-                    title: video.title,
-                    url: video.url,
+                    title: videoInfo.videoDetails.title,
+                    url: videoInfo.videoDetails.video_url,
+                    duration: formatDuration(videoInfo.videoDetails.lengthSeconds) // Format seconds to MM:SS
                 });
             }
         } catch (error) {
             console.error('Error during YouTube search, playlist fetch, or video info retrieval:', error);
-            message.channel.send('❌ An error occurred. Please try again or check the URL/search terms.');
+            message.channel.send('❌ An error occurred. Please try again or check the URL/search terms. The video might be age-restricted or unavailable.');
             return;
         }
 
@@ -147,13 +178,13 @@ client.on('messageCreate', async (message) => {
                     if (queueContruct.loop === 'single' && queueContruct.songs.length > 0) {
                         // If looping single, re-add the current song and play it again
                         play(message.guild, queueContruct.songs[0]);
-                        message.channel.send(`🔁 Looping **${queueContruct.songs[0].title}**.`);
+                        message.channel.send(`🔁 Looping **${queueContruct.songs[0].title}** (${queueContruct.songs[0].duration}).`);
                     } else if (queueContruct.loop === 'all' && queueContruct.songs.length > 0) {
                         // If looping all, move the finished song to the end of the queue
                         const finishedSong = queueContruct.songs.shift();
                         queueContruct.songs.push(finishedSong);
                         play(message.guild, queueContruct.songs[0]);
-                        message.channel.send(`🔁 Looping entire queue. Now playing: **${queueContruct.songs[0].title}**.`);
+                        message.channel.send(`🔁 Looping entire queue. Now playing: **${queueContruct.songs[0].title}** (${queueContruct.songs[0].duration}).`);
                     }
                     else {
                         queueContruct.songs.shift(); // Remove the finished song
@@ -185,9 +216,9 @@ client.on('messageCreate', async (message) => {
 
                 play(message.guild, queueContruct.songs[0]);
                 if (isPlaylist) {
-                    message.channel.send(`🎶 Added **${songsToAdd.length}** songs from the playlist to the queue! Now playing: **${queueContruct.songs[0].title}**`);
+                    message.channel.send(`🎶 Added **${songsToAdd.length}** songs from the playlist to the queue! Now playing: **${queueContruct.songs[0].title}** (${queueContruct.songs[0].duration}).`);
                 } else {
-                    message.channel.send(`🎵 Now playing: **${queueContruct.songs[0].title}**`);
+                    message.channel.send(`🎵 Now playing: **${queueContruct.songs[0].title}** (${queueContruct.songs[0].duration}).`);
                 }
 
             } catch (err) {
@@ -200,7 +231,7 @@ client.on('messageCreate', async (message) => {
             if (isPlaylist) {
                 message.channel.send(`🎵 Added **${songsToAdd.length}** songs from the playlist to the queue!`);
             } else {
-                message.channel.send(`🎵 **${songsToAdd[0].title}** has been added to the queue!`);
+                message.channel.send(`🎵 **${songsToAdd[0].title}** (${songsToAdd[0].duration}) has been added to the queue!`);
             }
         }
     }
@@ -325,7 +356,7 @@ client.on('messageCreate', async (message) => {
         for (let i = 0; i < queueContruct.songs.length; i++) {
             const song = queueContruct.songs[i];
             // Adjust index to be 1-based for display for all songs
-            const line = `${i === 0 ? '▶️ **(Now Playing)**' : `${i + 1}.`} ${song.title}\n`;
+            const line = `${i === 0 ? '▶️ **(Now Playing)**' : `${i + 1}.`} ${song.title} (${song.duration || 'N/A'})\n`; // Include duration here
 
             // If adding the next line exceeds MAX_CHARS, push currentMessage and start a new one
             if (currentMessage.length + line.length > MAX_CHARS) {
@@ -483,7 +514,8 @@ function play(guild, song) {
     resource.volume.setVolume(queueContruct.volume);
 
     queueContruct.player.play(resource);
-    queueContruct.textChannel.send(`▶️ Now playing: **${song.title}**`);
+    // Include song duration in the "Now playing" message
+    queueContruct.textChannel.send(`▶️ Now playing: **${song.title}** (${song.duration || 'N/A'}).`);
 }
 
 // Log in to Discord using the token in your .env file
