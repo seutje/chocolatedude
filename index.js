@@ -14,6 +14,7 @@ const ytdl = require('ytdl-core');
 const youtubeSearch = require('youtube-search-without-api-key');
 // Import ytpl for playlist support
 const ytpl = require('ytpl');
+const formatDuration = require('./formatDuration');
 
 // Create a new client instance
 const client = new Client({
@@ -34,29 +35,6 @@ client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
 });
 
-/**
- * Formats a duration in seconds into a MM:SS or HH:MM:SS string.
- * @param {number} totalSeconds The total number of seconds.
- * @returns {string} The formatted duration string.
- */
-function formatDuration(totalSeconds) {
-    if (isNaN(totalSeconds) || totalSeconds === null) return 'N/A';
-    totalSeconds = Math.floor(totalSeconds); // Ensure integer
-
-    const hours = Math.floor(totalSeconds / 3600);
-    totalSeconds %= 3600;
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-
-    const parts = [];
-    if (hours > 0) {
-        parts.push(String(hours));
-    }
-    parts.push(String(minutes).padStart(2, '0'));
-    parts.push(String(seconds).padStart(2, '0'));
-
-    return parts.join(':');
-}
 
 
 client.on('messageCreate', async (message) => {
@@ -518,5 +496,12 @@ function play(guild, song) {
     queueConstruct.textChannel.send(`▶️ Now playing: **${song.title}** (${song.duration || 'N/A'}).`);
 }
 
-// Log in to Discord using the token in your .env file
-client.login(process.env.DISCORD_TOKEN);
+// Export utility functions for testing
+module.exports = {
+    formatDuration
+};
+
+// Log in to Discord using the token in your .env file when run directly
+if (require.main === module) {
+    client.login(process.env.DISCORD_TOKEN);
+}
