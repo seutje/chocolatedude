@@ -5,7 +5,7 @@ const ytpl = require('ytpl');
 const formatDuration = require('../formatDuration');
 const { prepareStream, playStream, Utils } = require('@dank074/discord-video-stream');
 
-function play(guild, song, serverQueue) {
+async function play(guild, song, serverQueue) {
     const queueConstruct = serverQueue.get(guild.id);
     if (!song) {
         queueConstruct.connection.destroy();
@@ -26,8 +26,13 @@ function play(guild, song, serverQueue) {
                 .then(() => { queueConstruct.streamJoined = true; })
                 .catch(err => console.error('Stream join error:', err));
         }
+        const info = await ytdl.getInfo(song.url);
+        const format = ytdl.chooseFormat(info.formats, {
+            quality: 'highest',
+            filter: 'audioandvideo'
+        });
         const { command, output } = prepareStream(
-            ytdl(song.url, { filter: 'audioandvideo', highWaterMark: 1 << 26 }),
+            format.url,
             {
                 height: 720,
                 frameRate: 30,
@@ -145,19 +150,19 @@ module.exports = async function (message, serverQueue, streamer) {
             queueConstruct.connection = connection;
             connection.subscribe(player);
 
-            player.on(AudioPlayerStatus.Idle, () => {
+            player.on(AudioPlayerStatus.Idle, async () => {
                 if (queueConstruct.loop === 'single' && queueConstruct.songs.length > 0) {
-                    play(message.guild, queueConstruct.songs[0], serverQueue);
+                    await play(message.guild, queueConstruct.songs[0], serverQueue);
                     message.channel.send(`🔁 Looping **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`);
                 } else if (queueConstruct.loop === 'all' && queueConstruct.songs.length > 0) {
                     const finishedSong = queueConstruct.songs.shift();
                     queueConstruct.songs.push(finishedSong);
-                    play(message.guild, queueConstruct.songs[0], serverQueue);
+                    await play(message.guild, queueConstruct.songs[0], serverQueue);
                     message.channel.send(`🔁 Looping entire queue. Now playing: **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`);
                 } else {
                     queueConstruct.songs.shift();
                     if (queueConstruct.songs.length > 0) {
-                        play(message.guild, queueConstruct.songs[0], serverQueue);
+                        await play(message.guild, queueConstruct.songs[0], serverQueue);
                     } else {
                         queueConstruct.connection.destroy();
                         serverQueue.delete(message.guild.id);
@@ -166,12 +171,12 @@ module.exports = async function (message, serverQueue, streamer) {
                 }
             });
 
-            player.on('error', error => {
+            player.on('error', async error => {
                 console.error(`Error with audio player: ${error.message}`);
                 message.channel.send('❌ Error: Could not play the audio. Skipping to next song if available.');
                 queueConstruct.songs.shift();
                 if (queueConstruct.songs.length > 0) {
-                    play(message.guild, queueConstruct.songs[0], serverQueue);
+                    await play(message.guild, queueConstruct.songs[0], serverQueue);
                 } else {
                     if (queueConstruct.connection && !queueConstruct.connection.destroyed) {
                         queueConstruct.connection.destroy();
@@ -181,7 +186,7 @@ module.exports = async function (message, serverQueue, streamer) {
                 }
             });
 
-            play(message.guild, queueConstruct.songs[0], serverQueue);
+            await play(message.guild, queueConstruct.songs[0], serverQueue);
             if (isPlaylist) {
                 message.channel.send(`🎶 Added **${songsToAdd.length}** songs from the playlist to the queue!`);
             } else {

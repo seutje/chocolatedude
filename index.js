@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
+const { Client: SelfClient } = require('discord.js-selfbot-v13');
 const { Streamer } = require('@dank074/discord-video-stream');
 const formatDuration = require('./formatDuration');
 
@@ -12,7 +13,8 @@ const client = new Client({
     ]
 });
 
-const streamer = new Streamer(client);
+const selfClient = new SelfClient();
+const streamer = new Streamer(selfClient);
 
 const serverQueue = new Map();
 
@@ -30,6 +32,9 @@ const videoCommand = require('./commands/video');
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
+});
+selfClient.once('ready', () => {
+    console.log(`Streamer logged in as ${selfClient.user.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -65,4 +70,9 @@ module.exports = { formatDuration };
 
 if (require.main === module) {
     client.login(process.env.DISCORD_TOKEN);
+    if (process.env.SELF_TOKEN) {
+        selfClient.login(process.env.SELF_TOKEN);
+    } else {
+        console.warn('SELF_TOKEN not provided; video streaming will not work.');
+    }
 }
