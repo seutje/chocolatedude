@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
+const { DiscordTogether } = require('discord-together');
 const formatDuration = require('./formatDuration');
 
 const client = new Client({
@@ -10,6 +11,8 @@ const client = new Client({
         GatewayIntentBits.MessageContent
     ]
 });
+
+client.discordTogether = new DiscordTogether(client);
 
 const serverQueue = new Map();
 
@@ -54,7 +57,7 @@ client.on('messageCreate', async (message) => {
     } else if (message.content.startsWith('!remove')) {
         removeCommand(message, serverQueue);
     } else if (message.content.startsWith('!video')) {
-        videoCommand(message, serverQueue);
+        videoCommand(message, serverQueue, client);
     }
 });
 
