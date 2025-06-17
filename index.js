@@ -216,9 +216,9 @@ client.on('messageCreate', async (message) => {
 
                 play(message.guild, queueConstruct.songs[0]);
                 if (isPlaylist) {
-                    message.channel.send(`🎶 Added **${songsToAdd.length}** songs from the playlist to the queue! Now playing: **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`);
+                    message.channel.send(`🎶 Added **${songsToAdd.length}** songs from the playlist to the queue!`);
                 } else {
-                    message.channel.send(`🎵 Now playing: **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`);
+                    message.channel.send(`🎵 **${songsToAdd[0].title}** (${songsToAdd[0].duration}) added to the queue!`);
                 }
 
             } catch (err) {
