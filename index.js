@@ -26,7 +26,7 @@ const client = new Client({
 });
 
 // A Map to store queues for different guilds.
-// Key: guildId, Value: { textChannel, voiceChannel, connection, songs: [], player, volume, playing, loop }
+// Key: guildId, Value: { textChannel, voiceChannel, connection, songs, player, volume, playing, loop }
 // 'loop' can be 'none', 'single', or 'all'
 const serverQueue = new Map();
 
