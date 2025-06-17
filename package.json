@@ -4,7 +4,7 @@
   "description": "A dude made of chocolate",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
@@ -17,5 +17,8 @@
     "youtube-search-without-api-key": "^2.0.1",
     "ytdl-core": "npm:@distube/ytdl-core@^4.16.12",
     "ytpl": "^2.3.0"
+  },
+  "devDependencies": {
+    "jest": "^30.0.0"
   }
 }
