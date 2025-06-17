@@ -23,6 +23,7 @@ const queueCommand = require('./commands/queue');
 const searchCommand = require('./commands/search');
 const shuffleCommand = require('./commands/shuffle');
 const removeCommand = require('./commands/remove');
+const videoCommand = require('./commands/video');
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -52,6 +53,8 @@ client.on('messageCreate', async (message) => {
         shuffleCommand(message, serverQueue);
     } else if (message.content.startsWith('!remove')) {
         removeCommand(message, serverQueue);
+    } else if (message.content.startsWith('!video')) {
+        videoCommand(message, serverQueue);
     }
 });
 

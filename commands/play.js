@@ -12,7 +12,8 @@ function play(guild, song, serverQueue) {
         return;
     }
 
-    const stream = ytdl(song.url, { filter: 'audioonly', highWaterMark: 1 << 26 });
+    const filterType = queueConstruct.streamVideo ? 'audioandvideo' : 'audioonly';
+    const stream = ytdl(song.url, { filter: filterType, highWaterMark: 1 << 26 });
     const resource = createAudioResource(stream, { inlineVolume: true });
     resource.volume.setVolume(queueConstruct.volume);
 
@@ -105,7 +106,8 @@ module.exports = async function (message, serverQueue) {
             player: player,
             volume: 0.10,
             playing: true,
-            loop: 'none'
+            loop: 'none',
+            streamVideo: false
         };
 
         serverQueue.set(message.guild.id, queueConstruct);
