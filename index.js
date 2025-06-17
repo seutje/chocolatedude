@@ -146,11 +146,11 @@ client.on('messageCreate', async (message) => {
         }
 
         // Get the queue for the current guild
-        let queueContruct = serverQueue.get(message.guild.id);
+        let queueConstruct = serverQueue.get(message.guild.id);
 
-        if (!queueContruct) {
+        if (!queueConstruct) {
             const player = createAudioPlayer();
-            queueContruct = {
+            queueConstruct = {
                 textChannel: message.channel,
                 voiceChannel: voiceChannel,
                 connection: null,
@@ -161,8 +161,8 @@ client.on('messageCreate', async (message) => {
                 loop: 'none' // Initialize loop status to 'none'
             };
 
-            serverQueue.set(message.guild.id, queueContruct);
-            queueContruct.songs.push(...songsToAdd); // Add all fetched songs
+            serverQueue.set(message.guild.id, queueConstruct);
+            queueConstruct.songs.push(...songsToAdd); // Add all fetched songs
 
             try {
                 const connection = joinVoiceChannel({
@@ -170,28 +170,28 @@ client.on('messageCreate', async (message) => {
                     guildId: message.guild.id,
                     adapterCreator: message.guild.voiceAdapterCreator
                 });
-                queueContruct.connection = connection;
+                queueConstruct.connection = connection;
                 connection.subscribe(player); // Subscribe the connection to the player
 
                 // Handle player status changes
                 player.on(AudioPlayerStatus.Idle, () => {
-                    if (queueContruct.loop === 'single' && queueContruct.songs.length > 0) {
+                    if (queueConstruct.loop === 'single' && queueConstruct.songs.length > 0) {
                         // If looping single, re-add the current song and play it again
-                        play(message.guild, queueContruct.songs[0]);
-                        message.channel.send(`🔁 Looping **${queueContruct.songs[0].title}** (${queueContruct.songs[0].duration}).`);
-                    } else if (queueContruct.loop === 'all' && queueContruct.songs.length > 0) {
+                        play(message.guild, queueConstruct.songs[0]);
+                        message.channel.send(`🔁 Looping **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`);
+                    } else if (queueConstruct.loop === 'all' && queueConstruct.songs.length > 0) {
                         // If looping all, move the finished song to the end of the queue
-                        const finishedSong = queueContruct.songs.shift();
-                        queueContruct.songs.push(finishedSong);
-                        play(message.guild, queueContruct.songs[0]);
-                        message.channel.send(`🔁 Looping entire queue. Now playing: **${queueContruct.songs[0].title}** (${queueContruct.songs[0].duration}).`);
+                        const finishedSong = queueConstruct.songs.shift();
+                        queueConstruct.songs.push(finishedSong);
+                        play(message.guild, queueConstruct.songs[0]);
+                        message.channel.send(`🔁 Looping entire queue. Now playing: **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`);
                     }
                     else {
-                        queueContruct.songs.shift(); // Remove the finished song
-                        if (queueContruct.songs.length > 0) {
-                            play(message.guild, queueContruct.songs[0]);
+                        queueConstruct.songs.shift(); // Remove the finished song
+                        if (queueConstruct.songs.length > 0) {
+                            play(message.guild, queueConstruct.songs[0]);
                         } else {
-                            queueContruct.connection.destroy();
+                            queueConstruct.connection.destroy();
                             serverQueue.delete(message.guild.id);
                             message.channel.send('⏹️ Queue finished. Leaving voice channel.');
                         }
@@ -201,24 +201,24 @@ client.on('messageCreate', async (message) => {
                 player.on('error', error => {
                     console.error(`Error with audio player: ${error.message}`);
                     message.channel.send('❌ Error: Could not play the audio. Skipping to next song if available.');
-                    queueContruct.songs.shift(); // Skip current song on error
-                    if (queueContruct.songs.length > 0) {
-                        play(message.guild, queueContruct.songs[0]);
+                    queueConstruct.songs.shift(); // Skip current song on error
+                    if (queueConstruct.songs.length > 0) {
+                        play(message.guild, queueConstruct.songs[0]);
                     } else {
                         // Check if connection exists before destroying, as it might have already been destroyed
-                        if (queueContruct.connection && !queueContruct.connection.destroyed) {
-                            queueContruct.connection.destroy();
+                        if (queueConstruct.connection && !queueConstruct.connection.destroyed) {
+                            queueConstruct.connection.destroy();
                         }
                         serverQueue.delete(message.guild.id);
                         message.channel.send('⏹️ Queue finished. Leaving voice channel.');
                     }
                 });
 
-                play(message.guild, queueContruct.songs[0]);
+                play(message.guild, queueConstruct.songs[0]);
                 if (isPlaylist) {
-                    message.channel.send(`🎶 Added **${songsToAdd.length}** songs from the playlist to the queue! Now playing: **${queueContruct.songs[0].title}** (${queueContruct.songs[0].duration}).`);
+                    message.channel.send(`🎶 Added **${songsToAdd.length}** songs from the playlist to the queue! Now playing: **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`);
                 } else {
-                    message.channel.send(`🎵 Now playing: **${queueContruct.songs[0].title}** (${queueContruct.songs[0].duration}).`);
+                    message.channel.send(`🎵 Now playing: **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`);
                 }
 
             } catch (err) {
@@ -227,7 +227,7 @@ client.on('messageCreate', async (message) => {
                 message.channel.send('❌ Could not join the voice channel!');
             }
         } else {
-            queueContruct.songs.push(...songsToAdd);
+            queueConstruct.songs.push(...songsToAdd);
             if (isPlaylist) {
                 message.channel.send(`🎵 Added **${songsToAdd.length}** songs from the playlist to the queue!`);
             } else {
@@ -237,34 +237,34 @@ client.on('messageCreate', async (message) => {
     }
     // Handler for the !skip command
     else if (message.content.startsWith('!skip')) {
-        const queueContruct = serverQueue.get(message.guild.id);
-        if (!queueContruct || !queueContruct.songs.length) {
+        const queueConstruct = serverQueue.get(message.guild.id);
+        if (!queueConstruct || !queueConstruct.songs.length) {
             return message.channel.send('❌ There are no songs in the queue to skip!');
         }
-        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueConstruct.voiceChannel.id) {
             return message.channel.send('❌ You must be in the same voice channel as the bot to skip music!');
         }
 
         // Only disable looping if it's set to 'single', preserve 'all'
-        if (queueContruct.loop === 'single') {
-            queueContruct.loop = 'none';
+        if (queueConstruct.loop === 'single') {
+            queueConstruct.loop = 'none';
             message.channel.send('🔁 Single song looping disabled due to skip.');
         }
-        queueContruct.player.stop(); // This will trigger the 'idle' event, playing the next song
+        queueConstruct.player.stop(); // This will trigger the 'idle' event, playing the next song
         message.channel.send('⏭️ Skipped the current song.');
     }
     // Handler for the !pause command
     else if (message.content.startsWith('!pause')) {
-        const queueContruct = serverQueue.get(message.guild.id);
-        if (!queueContruct || queueContruct.songs.length === 0) {
+        const queueConstruct = serverQueue.get(message.guild.id);
+        if (!queueConstruct || queueConstruct.songs.length === 0) {
             return message.channel.send('❌ There is no music currently playing to pause!');
         }
-        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueConstruct.voiceChannel.id) {
             return message.channel.send('❌ You must be in the same voice channel as the bot to pause music!');
         }
 
-        if (queueContruct.player.state.status === AudioPlayerStatus.Playing) {
-            queueContruct.player.pause();
+        if (queueConstruct.player.state.status === AudioPlayerStatus.Playing) {
+            queueConstruct.player.pause();
             message.channel.send('⏸️ Music paused.');
         } else {
             message.channel.send('❌ Music is not currently playing or is already paused.');
@@ -272,16 +272,16 @@ client.on('messageCreate', async (message) => {
     }
     // Handler for the !resume command
     else if (message.content.startsWith('!resume')) {
-        const queueContruct = serverQueue.get(message.guild.id);
-        if (!queueContruct || queueContruct.songs.length === 0) {
+        const queueConstruct = serverQueue.get(message.guild.id);
+        if (!queueConstruct || queueConstruct.songs.length === 0) {
             return message.channel.send('❌ There is no music to resume!');
         }
-        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueConstruct.voiceChannel.id) {
             return message.channel.send('❌ You must be in the same voice channel as the bot to resume music!');
         }
 
-        if (queueContruct.player.state.status === AudioPlayerStatus.Paused) {
-            queueContruct.player.unpause();
+        if (queueConstruct.player.state.status === AudioPlayerStatus.Paused) {
+            queueConstruct.player.unpause();
             message.channel.send('▶️ Music resumed.');
         } else {
             message.channel.send('❌ Music is not paused.');
@@ -289,53 +289,53 @@ client.on('messageCreate', async (message) => {
     }
     // Handler for the !stop command
     else if (message.content.startsWith('!stop')) {
-        const queueContruct = serverQueue.get(message.guild.id);
-        if (!queueContruct) {
+        const queueConstruct = serverQueue.get(message.guild.id);
+        if (!queueConstruct) {
             return message.channel.send('❌ I am not in a voice channel.');
         }
-        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueConstruct.voiceChannel.id) {
             return message.channel.send('❌ You must be in the same voice channel as the bot to stop music!');
         }
 
-        queueContruct.songs = []; // Clear the queue
-        queueContruct.player.stop(); // Stop the current song
-        queueContruct.connection.destroy(); // Destroy the connection
+        queueConstruct.songs = []; // Clear the queue
+        queueConstruct.player.stop(); // Stop the current song
+        queueConstruct.connection.destroy(); // Destroy the connection
         serverQueue.delete(message.guild.id);
         message.channel.send('⏹️ Stopped playback and left the channel.');
     }
     // !loop command handler
     else if (message.content.startsWith('!loop')) {
-        const queueContruct = serverQueue.get(message.guild.id);
+        const queueConstruct = serverQueue.get(message.guild.id);
         const args = message.content.split(' ');
         const loopCommand = args[0]; // e.g., "!loop"
         const loopType = args[1] ? args[1].toLowerCase() : null; // e.g., "all", "single"
 
-        if (!queueContruct || !queueContruct.songs.length) {
+        if (!queueConstruct || !queueConstruct.songs.length) {
             return message.channel.send('❌ There is no song currently playing to loop!');
         }
-        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueConstruct.voiceChannel.id) {
             return message.channel.send('❌ You must be in the same voice channel as the bot to toggle looping!');
         }
 
         if (loopType === 'all') {
-            queueContruct.loop = 'all';
+            queueConstruct.loop = 'all';
             message.channel.send('🔁 Looping: **Entire queue** is now enabled.');
         } else if (loopType === 'single') {
-            queueContruct.loop = 'single';
+            queueConstruct.loop = 'single';
             message.channel.send('🔁 Looping: **Single song** is now enabled.');
         } else {
             // Toggle logic for !loop with no arguments
-            switch (queueContruct.loop) {
+            switch (queueConstruct.loop) {
                 case 'none':
-                    queueContruct.loop = 'single';
+                    queueConstruct.loop = 'single';
                     message.channel.send('🔁 Looping: **Single song** is now enabled.');
                     break;
                 case 'single':
-                    queueContruct.loop = 'all';
+                    queueConstruct.loop = 'all';
                     message.channel.send('🔁 Looping: **Entire queue** is now enabled.');
                     break;
                 case 'all':
-                    queueContruct.loop = 'none';
+                    queueConstruct.loop = 'none';
                     message.channel.send('🔁 Looping: **Disabled**.');
                     break;
             }
@@ -343,9 +343,9 @@ client.on('messageCreate', async (message) => {
     }
     // --- New !queue command handler ---
     else if (message.content.startsWith('!queue')) {
-        const queueContruct = serverQueue.get(message.guild.id);
+        const queueConstruct = serverQueue.get(message.guild.id);
 
-        if (!queueContruct || queueContruct.songs.length === 0) {
+        if (!queueConstruct || queueConstruct.songs.length === 0) {
             return message.channel.send('ℹ️ The queue is currently empty.');
         }
 
@@ -353,8 +353,8 @@ client.on('messageCreate', async (message) => {
         let messagesToSend = [];
         let currentMessage = '🎶 **Current Music Queue:**\n';
 
-        for (let i = 0; i < queueContruct.songs.length; i++) {
-            const song = queueContruct.songs[i];
+        for (let i = 0; i < queueConstruct.songs.length; i++) {
+            const song = queueConstruct.songs[i];
             // Adjust index to be 1-based for display for all songs
             const line = `${i === 0 ? '▶️ **(Now Playing)**' : `${i + 1}.`} ${song.title} (${song.duration || 'N/A'})\n`; // Include duration here
 
@@ -370,7 +370,7 @@ client.on('messageCreate', async (message) => {
 
         // Determine the loop status string
         let loopStatusString;
-        switch (queueContruct.loop) {
+        switch (queueConstruct.loop) {
             case 'none':
                 loopStatusString = 'Disabled';
                 break;
@@ -421,20 +421,20 @@ client.on('messageCreate', async (message) => {
     }
     // --- New !shuffle command handler ---
     else if (message.content.startsWith('!shuffle')) {
-        const queueContruct = serverQueue.get(message.guild.id);
+        const queueConstruct = serverQueue.get(message.guild.id);
 
-        if (!queueContruct || queueContruct.songs.length <= 1) {
+        if (!queueConstruct || queueConstruct.songs.length <= 1) {
             return message.channel.send('❌ Not enough songs in the queue to shuffle!');
         }
-        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueConstruct.voiceChannel.id) {
             return message.channel.send('❌ You must be in the same voice channel as the bot to shuffle music!');
         }
 
         // Get the currently playing song
-        const currentSong = queueContruct.songs.shift();
+        const currentSong = queueConstruct.songs.shift();
 
         // Shuffle the rest of the queue using Fisher-Yates (Knuth) shuffle algorithm
-        let currentIndex = queueContruct.songs.length;
+        let currentIndex = queueConstruct.songs.length;
         let randomIndex;
 
         while (currentIndex !== 0) {
@@ -442,25 +442,25 @@ client.on('messageCreate', async (message) => {
             currentIndex--;
 
             // And swap it with the current element.
-            [queueContruct.songs[currentIndex], queueContruct.songs[randomIndex]] = [
-                queueContruct.songs[randomIndex], queueContruct.songs[currentIndex]];
+            [queueConstruct.songs[currentIndex], queueConstruct.songs[randomIndex]] = [
+                queueConstruct.songs[randomIndex], queueConstruct.songs[currentIndex]];
         }
 
         // Put the current song back at the beginning
-        queueContruct.songs.unshift(currentSong);
+        queueConstruct.songs.unshift(currentSong);
 
         message.channel.send('🔀 Queue has been shuffled!');
     }
     // --- New !remove command handler ---
     else if (message.content.startsWith('!remove')) {
-        const queueContruct = serverQueue.get(message.guild.id);
+        const queueConstruct = serverQueue.get(message.guild.id);
         const args = message.content.split(' ').slice(1);
         const indexToRemove = parseInt(args[0]);
 
-        if (!queueContruct || queueContruct.songs.length === 0) {
+        if (!queueConstruct || queueConstruct.songs.length === 0) {
             return message.channel.send('❌ The queue is empty. Nothing to remove!');
         }
-        if (!message.member.voice.channel || message.member.voice.channel.id !== queueContruct.voiceChannel.id) {
+        if (!message.member.voice.channel || message.member.voice.channel.id !== queueConstruct.voiceChannel.id) {
             return message.channel.send('❌ You must be in the same voice channel as the bot to remove music!');
         }
 
@@ -470,21 +470,21 @@ client.on('messageCreate', async (message) => {
 
         if (indexToRemove === 1) {
             // If index is 1, it means skip the current song
-            if (queueContruct.loop === 'single') {
-                queueContruct.loop = 'none';
+            if (queueConstruct.loop === 'single') {
+                queueConstruct.loop = 'none';
                 message.channel.send('🔁 Single song looping disabled due to skip.');
             }
-            queueContruct.player.stop(); // This will trigger the 'idle' event, playing the next song
+            queueConstruct.player.stop(); // This will trigger the 'idle' event, playing the next song
             message.channel.send('🗑️ Skipped the current song.');
         } else {
             // Adjust for 0-based array index (user input is 1-based)
             const actualIndex = indexToRemove - 1;
 
-            if (actualIndex >= queueContruct.songs.length) {
+            if (actualIndex >= queueConstruct.songs.length) {
                 return message.channel.send('❌ That song number does not exist in the queue.');
             }
 
-            const removedSong = queueContruct.songs.splice(actualIndex, 1);
+            const removedSong = queueConstruct.songs.splice(actualIndex, 1);
             if (removedSong.length > 0) {
                 message.channel.send(`🗑️ Removed **${removedSong[0].title}** from the queue.`);
             } else {
@@ -500,10 +500,10 @@ client.on('messageCreate', async (message) => {
  * @param {object} song The song object to play.
  */
 function play(guild, song) {
-    const queueContruct = serverQueue.get(guild.id);
+    const queueConstruct = serverQueue.get(guild.id);
     if (!song) {
         // If no more songs, disconnect and clean up
-        queueContruct.connection.destroy();
+        queueConstruct.connection.destroy();
         serverQueue.delete(guild.id);
         return;
     }
@@ -511,11 +511,11 @@ function play(guild, song) {
     // Increased highWaterMark to 2^26 (64 MB)
     const stream = ytdl(song.url, { filter: 'audioonly', highWaterMark: 1 << 26 });
     const resource = createAudioResource(stream, { inlineVolume: true });
-    resource.volume.setVolume(queueContruct.volume);
+    resource.volume.setVolume(queueConstruct.volume);
 
-    queueContruct.player.play(resource);
+    queueConstruct.player.play(resource);
     // Include song duration in the "Now playing" message
-    queueContruct.textChannel.send(`▶️ Now playing: **${song.title}** (${song.duration || 'N/A'}).`);
+    queueConstruct.textChannel.send(`▶️ Now playing: **${song.title}** (${song.duration || 'N/A'}).`);
 }
 
 // Log in to Discord using the token in your .env file
