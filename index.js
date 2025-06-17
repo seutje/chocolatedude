@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
-const { DiscordTogether } = require('discord-together');
+const { Streamer } = require('@dank074/discord-video-stream');
 const formatDuration = require('./formatDuration');
 
 const client = new Client({
@@ -12,7 +12,7 @@ const client = new Client({
     ]
 });
 
-client.discordTogether = new DiscordTogether(client);
+const streamer = new Streamer(client);
 
 const serverQueue = new Map();
 
@@ -37,7 +37,7 @@ client.on('messageCreate', async (message) => {
     if (!message.content.startsWith('!')) return;
 
     if (message.content.startsWith('!play')) {
-        await playCommand(message, serverQueue);
+        await playCommand(message, serverQueue, streamer);
     } else if (message.content.startsWith('!skip')) {
         skipCommand(message, serverQueue);
     } else if (message.content.startsWith('!pause')) {
@@ -57,7 +57,7 @@ client.on('messageCreate', async (message) => {
     } else if (message.content.startsWith('!remove')) {
         removeCommand(message, serverQueue);
     } else if (message.content.startsWith('!video')) {
-        videoCommand(message, serverQueue, client);
+        videoCommand(message, serverQueue);
     }
 });
 

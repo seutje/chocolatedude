@@ -3,6 +3,7 @@ const ytdl = require('ytdl-core');
 const youtubeSearch = require('youtube-search-without-api-key');
 const ytpl = require('ytpl');
 const formatDuration = require('../formatDuration');
+const { prepareStream, playStream, Utils } = require('@dank074/discord-video-stream');
 
 function play(guild, song, serverQueue) {
     const queueConstruct = serverQueue.get(guild.id);
@@ -12,16 +13,36 @@ function play(guild, song, serverQueue) {
         return;
     }
 
-    const filterType = queueConstruct.streamVideo ? 'audioandvideo' : 'audioonly';
-    const stream = ytdl(song.url, { filter: filterType, highWaterMark: 1 << 26 });
+    const stream = ytdl(song.url, { filter: 'audioonly', highWaterMark: 1 << 26 });
     const resource = createAudioResource(stream, { inlineVolume: true });
     resource.volume.setVolume(queueConstruct.volume);
 
     queueConstruct.player.play(resource);
     queueConstruct.textChannel.send(`▶️ Now playing: **${song.title}** (${song.duration || 'N/A'}).`);
+
+    if (queueConstruct.streamVideo) {
+        if (!queueConstruct.streamJoined) {
+            queueConstruct.streamer.joinVoice(guild.id, queueConstruct.voiceChannel.id)
+                .then(() => { queueConstruct.streamJoined = true; })
+                .catch(err => console.error('Stream join error:', err));
+        }
+        const { command, output } = prepareStream(
+            ytdl(song.url, { filter: 'audioandvideo', highWaterMark: 1 << 26 }),
+            {
+                height: 720,
+                frameRate: 30,
+                bitrateVideo: 5000,
+                bitrateVideoMax: 7500,
+                videoCodec: Utils.normalizeVideoCodec('H264')
+            }
+        );
+        command.on('error', err => console.error('FFmpeg error:', err));
+        playStream(output, queueConstruct.streamer, { type: 'go-live' })
+            .catch(err => console.error('Stream error:', err));
+    }
 }
 
-module.exports = async function (message, serverQueue) {
+module.exports = async function (message, serverQueue, streamer) {
     const args = message.content.split(' ').slice(1);
     const query = args.join(' ');
 
@@ -107,7 +128,9 @@ module.exports = async function (message, serverQueue) {
             volume: 0.10,
             playing: true,
             loop: 'none',
-            streamVideo: false
+            streamVideo: false,
+            streamer: streamer,
+            streamJoined: false
         };
 
         serverQueue.set(message.guild.id, queueConstruct);
@@ -170,6 +193,7 @@ module.exports = async function (message, serverQueue) {
             message.channel.send('❌ Could not join the voice channel!');
         }
     } else {
+        queueConstruct.streamer = streamer;
         queueConstruct.songs.push(...songsToAdd);
         if (isPlaylist) {
             message.channel.send(`🎵 Added **${songsToAdd.length}** songs from the playlist to the queue!`);
