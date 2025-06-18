@@ -2,6 +2,7 @@ const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerSta
 const ytdl = require('ytdl-core');
 const youtubeSearch = require('youtube-search-without-api-key');
 const ytpl = require('ytpl');
+const { getTracks } = require('spotify-url-info')(fetch);
 const formatDuration = require('../formatDuration');
 
 function play(guild, song, serverQueue) {
@@ -40,7 +41,32 @@ module.exports = async function (message, serverQueue) {
 
     try {
         if (query.startsWith('http')) {
-            if (query.includes('list=')) {
+            if (query.includes('spotify.com/playlist')) {
+                isPlaylist = true;
+                message.channel.send('⏳ Fetching Spotify playlist, please wait...');
+                const tracks = await getTracks(query);
+                if (!tracks || tracks.length === 0) {
+                    message.channel.send('❌ No tracks found in this Spotify playlist.');
+                    return;
+                }
+                const limitedTracks = tracks.slice(0, 50);
+                for (const track of limitedTracks) {
+                    const searchTerm = `${track.artist} - ${track.name}`;
+                    const searchResults = await youtubeSearch.search(searchTerm);
+                    const video = searchResults.length ? searchResults[0] : null;
+                    if (video) {
+                        const videoInfo = await ytdl.getInfo(video.url);
+                        songsToAdd.push({
+                            title: videoInfo.videoDetails.title,
+                            url: videoInfo.videoDetails.video_url,
+                            duration: formatDuration(videoInfo.videoDetails.lengthSeconds)
+                        });
+                    }
+                }
+                if (tracks.length > 50) {
+                    message.channel.send('⚠️ Playlist contains more than 50 tracks. Only the first 50 will be added.');
+                }
+            } else if (query.includes('list=')) {
                 isPlaylist = true;
                 message.channel.send('⏳ Fetching playlist, please wait...');
                 const playlist = await ytpl(query, { limit: 50 });
