@@ -38,6 +38,8 @@ module.exports = async function (message, serverQueue) {
 
     let songsToAdd = [];
     let isPlaylist = false;
+    let remainingSpotifyTracks = [];
+    let playlistOverflow = false;
 
     try {
         if (query.startsWith('http')) {
@@ -50,8 +52,11 @@ module.exports = async function (message, serverQueue) {
                     return;
                 }
                 const limitedTracks = tracks.slice(0, 100);
-                for (const track of limitedTracks) {
-                    const searchTerm = `${track.artist} - ${track.name}`;
+                playlistOverflow = tracks.length > 100;
+
+                if (!serverQueue.get(message.guild.id)) {
+                    const first = limitedTracks.shift();
+                    const searchTerm = `${first.artist} - ${first.name}`;
                     const searchResults = await youtubeSearch.search(searchTerm);
                     const video = searchResults.length ? searchResults[0] : null;
                     if (video) {
@@ -62,8 +67,23 @@ module.exports = async function (message, serverQueue) {
                             duration: formatDuration(videoInfo.videoDetails.lengthSeconds)
                         });
                     }
+                    remainingSpotifyTracks = limitedTracks;
+                } else {
+                    for (const track of limitedTracks) {
+                        const searchTerm = `${track.artist} - ${track.name}`;
+                        const searchResults = await youtubeSearch.search(searchTerm);
+                        const video = searchResults.length ? searchResults[0] : null;
+                        if (video) {
+                            const videoInfo = await ytdl.getInfo(video.url);
+                            songsToAdd.push({
+                                title: videoInfo.videoDetails.title,
+                                url: videoInfo.videoDetails.video_url,
+                                duration: formatDuration(videoInfo.videoDetails.lengthSeconds)
+                            });
+                        }
+                    }
                 }
-                if (tracks.length > 100) {
+                if (playlistOverflow) {
                     message.channel.send('⚠️ Playlist contains more than 100 tracks. Only the first 100 will be added.');
                 }
             } else if (query.includes('list=')) {
@@ -183,10 +203,45 @@ module.exports = async function (message, serverQueue) {
             });
 
             play(message.guild, queueConstruct.songs[0], serverQueue);
-            if (isPlaylist) {
+            if (isPlaylist && remainingSpotifyTracks.length > 0) {
+                message.channel.send(`🎶 Starting playlist playback. Loading ${remainingSpotifyTracks.length} more songs...`);
+            } else if (isPlaylist) {
                 message.channel.send(`🎶 Added **${songsToAdd.length}** songs from the playlist to the queue!`);
             } else {
                 message.channel.send(`🎵 **${songsToAdd[0].title}** (${songsToAdd[0].duration}) added to the queue!`);
+            }
+
+            if (remainingSpotifyTracks.length > 0) {
+                (async () => {
+                    let added = 0;
+                    for (const track of remainingSpotifyTracks) {
+                        try {
+                            const term = `${track.artist} - ${track.name}`;
+                            const results = await youtubeSearch.search(term);
+                            const vid = results.length ? results[0] : null;
+                            if (vid) {
+                                const info = await ytdl.getInfo(vid.url);
+                                const song = {
+                                    title: info.videoDetails.title,
+                                    url: info.videoDetails.video_url,
+                                    duration: formatDuration(info.videoDetails.lengthSeconds)
+                                };
+                                const queue = serverQueue.get(message.guild.id);
+                                if (queue) {
+                                    queue.songs.push(song);
+                                    added++;
+                                } else {
+                                    break;
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Error processing playlist track:', e);
+                        }
+                    }
+                    if (added > 0) {
+                        message.channel.send(`🎶 Added **${added}** more songs from the playlist to the queue!`);
+                    }
+                })();
             }
         } catch (err) {
             console.error(err);
