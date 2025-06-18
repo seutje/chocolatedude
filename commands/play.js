@@ -49,7 +49,7 @@ module.exports = async function (message, serverQueue) {
                     message.channel.send('❌ No tracks found in this Spotify playlist.');
                     return;
                 }
-                const limitedTracks = tracks.slice(0, 50);
+                const limitedTracks = tracks.slice(0, 100);
                 for (const track of limitedTracks) {
                     const searchTerm = `${track.artist} - ${track.name}`;
                     const searchResults = await youtubeSearch.search(searchTerm);
@@ -63,13 +63,13 @@ module.exports = async function (message, serverQueue) {
                         });
                     }
                 }
-                if (tracks.length > 50) {
-                    message.channel.send('⚠️ Playlist contains more than 50 tracks. Only the first 50 will be added.');
+                if (tracks.length > 100) {
+                    message.channel.send('⚠️ Playlist contains more than 100 tracks. Only the first 100 will be added.');
                 }
             } else if (query.includes('list=')) {
                 isPlaylist = true;
                 message.channel.send('⏳ Fetching playlist, please wait...');
-                const playlist = await ytpl(query, { limit: 50 });
+                const playlist = await ytpl(query, { limit: 100 });
                 if (playlist.items.length === 0) {
                     message.channel.send('❌ No videos found in this playlist, or the playlist is empty/private.');
                     return;
@@ -79,9 +79,9 @@ module.exports = async function (message, serverQueue) {
                     url: item.url,
                     duration: item.duration
                 }));
-                if (songsToAdd.length > 50) {
-                    songsToAdd = songsToAdd.slice(0, 50);
-                    message.channel.send(`⚠️ Playlist contains more than 50 videos. Only the first 50 will be added.`);
+                if (songsToAdd.length > 100) {
+                    songsToAdd = songsToAdd.slice(0, 100);
+                    message.channel.send(`⚠️ Playlist contains more than 100 videos. Only the first 100 will be added.`);
                 }
             } else {
                 message.channel.send('⏳ Fetching video info, please wait...');
