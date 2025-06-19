@@ -1,6 +1,36 @@
 module.exports = function (message, serverQueue) {
     const queueConstruct = serverQueue.get(message.guild.id);
     const args = message.content.split(' ').slice(1);
+
+    const numberWords = {
+        zero: 0,
+        one: 1,
+        two: 2,
+        three: 3,
+        four: 4,
+        five: 5,
+        six: 6,
+        seven: 7,
+        eight: 8,
+        nine: 9,
+        ten: 10,
+        eleven: 11,
+        twelve: 12,
+        thirteen: 13,
+        fourteen: 14,
+        fifteen: 15,
+        sixteen: 16,
+        seventeen: 17,
+        eighteen: 18,
+        nineteen: 19,
+        twenty: 20,
+    };
+
+    let firstArg = args[0] ? args[0].toLowerCase() : undefined;
+    if (firstArg && numberWords.hasOwnProperty(firstArg)) {
+        firstArg = String(numberWords[firstArg]);
+        args[0] = firstArg;
+    }
     const indexToRemove = parseInt(args[0]);
 
     if (!queueConstruct || queueConstruct.songs.length === 0) {

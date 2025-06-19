@@ -85,7 +85,13 @@ module.exports = async function(message, serverQueue) {
             require('./remove')(fakeMessage, serverQueue);
         } else if (text.startsWith('loop')) {
             require('./loop')(fakeMessage, serverQueue);
-        } else if (text.startsWith('queue')) {
+        } else if (
+            text.startsWith('queue') ||
+            text === 'q' ||
+            text.startsWith('q ') ||
+            text === 'cue' ||
+            text.startsWith('cue ')
+        ) {
             await require('./queue')(fakeMessage, serverQueue);
         } else if (text.startsWith('shuffle')) {
             require('./shuffle')(fakeMessage, serverQueue);
