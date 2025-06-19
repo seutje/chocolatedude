@@ -2,6 +2,7 @@ const { joinVoiceChannel, EndBehaviorType } = require('@discordjs/voice');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const prism = require('prism-media');
 const { nodewhisper } = require('nodejs-whisper');
 
 module.exports = async function(message, serverQueue) {
@@ -33,7 +34,8 @@ module.exports = async function(message, serverQueue) {
 
     const rawPath = path.join(recordingsDir, `${Date.now()}-${userId}.pcm`);
     const output = fs.createWriteStream(rawPath);
-    audioStream.pipe(output);
+    const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
+    audioStream.pipe(decoder).pipe(output);
 
     await new Promise(resolve => audioStream.on('end', resolve));
 
