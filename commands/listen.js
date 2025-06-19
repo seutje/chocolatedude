@@ -59,7 +59,12 @@ module.exports = async function(message, serverQueue) {
     try {
         const transcript = await nodewhisper(wavPath, { modelName: 'base.en' });
         fs.unlinkSync(wavPath);
-        const text = transcript.trim().toLowerCase();
+        const cleaned = transcript
+            .replace(/\[[^\]]+\]\s*/g, '') // remove timecodes like [00:00:00.000 --> 00:00:01.000]
+            .replace(/[.?!]\s*$/g, '')
+            .trim()
+            .toLowerCase();
+        const text = cleaned;
         message.channel.send(`📝 Heard: ${text}`);
         const fakeMessage = { ...message, content: `!${text}` };
         if (text.startsWith('play')) {
