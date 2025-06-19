@@ -47,6 +47,7 @@ module.exports = async function(message, serverQueue) {
             '-i', rawPath,
             '-ar', '16000',
             '-ac', '1',
+            '-af', 'apad=pad_dur=0.1',
             wavPath,
         ]);
         ffmpeg.on('close', resolve);
