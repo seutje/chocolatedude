@@ -66,7 +66,9 @@ module.exports = async function(message, serverQueue) {
             .toLowerCase();
         const text = cleaned;
         message.channel.send(`📝 Heard: ${text}`);
-        const fakeMessage = { ...message, content: `!${text}` };
+        // Preserve the original Discord.js message object so command handlers can
+        // access properties like `member` that are non-enumerable
+        const fakeMessage = Object.assign(Object.create(message), { content: `!${text}` });
         if (text.startsWith('play')) {
             await require('./play')(fakeMessage, serverQueue);
         } else if (text.startsWith('skip')) {
