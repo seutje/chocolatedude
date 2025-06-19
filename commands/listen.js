@@ -14,6 +14,7 @@ module.exports = async function(message, serverQueue) {
         channelId: voiceChannel.id,
         guildId: message.guild.id,
         adapterCreator: message.guild.voiceAdapterCreator,
+        selfDeaf: false
     });
 
     message.channel.send('🎙️ Listening for your command...');
@@ -27,7 +28,10 @@ module.exports = async function(message, serverQueue) {
         },
     });
 
-    const rawPath = path.join(__dirname, `../recordings/${Date.now()}-${userId}.pcm`);
+    const recordingsDir = path.join(__dirname, '../recordings');
+    fs.mkdirSync(recordingsDir, { recursive: true });
+
+    const rawPath = path.join(recordingsDir, `${Date.now()}-${userId}.pcm`);
     const output = fs.createWriteStream(rawPath);
     audioStream.pipe(output);
 
