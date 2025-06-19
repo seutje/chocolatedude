@@ -79,6 +79,16 @@ module.exports = async function(message, serverQueue) {
             require('./resume')(fakeMessage, serverQueue);
         } else if (text.startsWith('stop')) {
             require('./stop')(fakeMessage, serverQueue);
+        } else if (text.startsWith('search')) {
+            await require('./search')(fakeMessage);
+        } else if (text.startsWith('remove')) {
+            require('./remove')(fakeMessage, serverQueue);
+        } else if (text.startsWith('loop')) {
+            require('./loop')(fakeMessage, serverQueue);
+        } else if (text.startsWith('queue')) {
+            await require('./queue')(fakeMessage, serverQueue);
+        } else if (text.startsWith('shuffle')) {
+            require('./shuffle')(fakeMessage, serverQueue);
         } else {
             message.channel.send('❌ Command not recognized.');
         }
