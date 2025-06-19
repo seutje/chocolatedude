@@ -24,6 +24,7 @@ const searchCommand = require('./commands/search');
 const shuffleCommand = require('./commands/shuffle');
 const removeCommand = require('./commands/remove');
 const listenCommand = require('./commands/listen');
+const helpCommand = require('./commands/help');
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -55,6 +56,8 @@ client.on('messageCreate', async (message) => {
         removeCommand(message, serverQueue);
     } else if (message.content.startsWith('!listen')) {
         await listenCommand(message, serverQueue);
+    } else if (message.content.startsWith('!help')) {
+        helpCommand(message);
     }
 });
 

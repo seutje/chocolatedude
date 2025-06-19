@@ -38,6 +38,7 @@ Text commands are prefixed with `!`:
 - `!search <terms>` – show top YouTube results.
 - `!shuffle` – shuffle upcoming songs.
 - `!remove <position>` – remove a song by its number in the queue.
+- `!help` – display a list of available commands.
 - `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip").
 
 ## Testing
