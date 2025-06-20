@@ -31,7 +31,7 @@ module.exports = async function (message) {
 
         function computeUnclosed(str) {
             const stack = [];
-            const re = /(\*{1,3}|_{1,3})/g;
+            const re = /(\*{1,3})/g; // handle only asterisks, ignore underscores
             let m;
             while ((m = re.exec(str)) !== null) {
                 const token = m[1];
