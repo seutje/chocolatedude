@@ -29,8 +29,46 @@ module.exports = async function (message) {
             return trimmed ? `🤔 *${trimmed}*` : '';
         });
 
-        for (let i = 0; i < answer.length; i += 2000) {
-            await message.channel.send(answer.slice(i, i + 2000));
+        function computeUnclosed(str) {
+            const stack = [];
+            const re = /(\*{1,3}|_{1,3})/g;
+            let m;
+            while ((m = re.exec(str)) !== null) {
+                const token = m[1];
+                if (stack.length && stack[stack.length - 1] === token) {
+                    stack.pop();
+                } else {
+                    stack.push(token);
+                }
+            }
+            return stack;
+        }
+
+        // Split long responses while keeping markdown formatting intact.
+        // Default chunk size is 1750 characters to stay well below
+        // Discord's 2000 character limit.
+        function splitResponse(text, maxLen = 1750) {
+            const chunks = [];
+            let prefix = '';
+            while (text.length) {
+                let chunk = text.slice(0, maxLen);
+                if (text.length > maxLen) {
+                    let splitPos = Math.max(chunk.lastIndexOf('\n'), chunk.lastIndexOf(' '));
+                    if (splitPos <= 0) splitPos = maxLen;
+                    chunk = text.slice(0, splitPos);
+                }
+                chunk = prefix + chunk;
+                const unclosed = computeUnclosed(chunk);
+                const closing = unclosed.slice().reverse().join('');
+                chunks.push(chunk + closing);
+                prefix = unclosed.join('');
+                text = text.slice(chunk.length - prefix.length);
+            }
+            return chunks;
+        }
+
+        for (const part of splitResponse(answer)) {
+            await message.channel.send(part);
         }
     } catch (error) {
         console.error('Error during !ask command:', error);
