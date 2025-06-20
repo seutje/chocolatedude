@@ -11,6 +11,7 @@ module.exports = function (message) {
         '!search <terms> - show top YouTube results.',
         '!shuffle - shuffle upcoming songs.',
         '!remove <position> - remove a song by its number in the queue.',
+        '!ask <prompt> - ask a question using the local Ollama API.',
         '!listen - record a short voice message and execute the spoken command.',
         '!help - show this message.'
     ].join('\n');
