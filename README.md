@@ -7,6 +7,8 @@ ChocolateDude is a Discord music bot written in Node.js. It can play music from 
 - Node.js 18 or later
 - `ffmpeg` in your system path (used for audio processing)
 - A Discord bot token stored in a `.env` file as `DISCORD_TOKEN`
+- The base URL of your Ollama API stored as `OLLAMA_URL` (defaults to
+  `http://127.0.0.1:11434`)
 
 The bot relies on the [`nodejs-whisper`](https://www.npmjs.com/package/nodejs-whisper) package which wraps OpenAI's Whisper model. The Whisper model files will be downloaded automatically on first use.
 
@@ -38,6 +40,7 @@ Text commands are prefixed with `!`:
 - `!search <terms>` – show top YouTube results.
 - `!shuffle` – shuffle upcoming songs.
 - `!remove <position>` – remove a song by its number in the queue.
+- `!ask <prompt>` – get a response from a local Ollama API.
 - `!help` – display a list of available commands.
 - `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip").
 
