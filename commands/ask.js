@@ -29,8 +29,24 @@ module.exports = async function (message) {
             return trimmed ? `🤔 *${trimmed}*` : '';
         });
 
+        function computeUnclosed(str) {
+            const stack = [];
+            const re = /(\*{1,3}|_{1,3})/g;
+            let m;
+            while ((m = re.exec(str)) !== null) {
+                const token = m[1];
+                if (stack.length && stack[stack.length - 1] === token) {
+                    stack.pop();
+                } else {
+                    stack.push(token);
+                }
+            }
+            return stack;
+        }
+
         function splitResponse(text, maxLen = 2000) {
             const chunks = [];
+            let prefix = '';
             while (text.length) {
                 let chunk = text.slice(0, maxLen);
                 if (text.length > maxLen) {
@@ -38,14 +54,12 @@ module.exports = async function (message) {
                     if (splitPos <= 0) splitPos = maxLen;
                     chunk = text.slice(0, splitPos);
                 }
-                const starCount = (chunk.match(/\*/g) || []).length;
-                if (starCount % 2) {
-                    chunk += '*';
-                    text = '*' + text.slice(chunk.length - 1);
-                } else {
-                    text = text.slice(chunk.length);
-                }
-                chunks.push(chunk);
+                chunk = prefix + chunk;
+                const unclosed = computeUnclosed(chunk);
+                const closing = unclosed.slice().reverse().join('');
+                chunks.push(chunk + closing);
+                prefix = unclosed.join('');
+                text = text.slice(chunk.length - prefix.length);
             }
             return chunks;
         }
