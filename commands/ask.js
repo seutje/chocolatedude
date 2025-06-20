@@ -29,8 +29,29 @@ module.exports = async function (message) {
             return trimmed ? `🤔 *${trimmed}*` : '';
         });
 
-        for (let i = 0; i < answer.length; i += 2000) {
-            await message.channel.send(answer.slice(i, i + 2000));
+        function splitResponse(text, maxLen = 2000) {
+            const chunks = [];
+            while (text.length) {
+                let chunk = text.slice(0, maxLen);
+                if (text.length > maxLen) {
+                    let splitPos = Math.max(chunk.lastIndexOf('\n'), chunk.lastIndexOf(' '));
+                    if (splitPos <= 0) splitPos = maxLen;
+                    chunk = text.slice(0, splitPos);
+                }
+                const starCount = (chunk.match(/\*/g) || []).length;
+                if (starCount % 2) {
+                    chunk += '*';
+                    text = '*' + text.slice(chunk.length - 1);
+                } else {
+                    text = text.slice(chunk.length);
+                }
+                chunks.push(chunk);
+            }
+            return chunks;
+        }
+
+        for (const part of splitResponse(answer)) {
+            await message.channel.send(part);
         }
     } catch (error) {
         console.error('Error during !ask command:', error);
