@@ -68,7 +68,7 @@ module.exports = async function (message) {
         }
 
         for (const part of splitResponse(answer)) {
-            await message.channel.send(part);
+            await message.channel.send(part.trimStart());
         }
     } catch (error) {
         console.error('Error during !ask command:', error);
