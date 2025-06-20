@@ -1,3 +1,9 @@
+const { Agent } = require('undici');
+const agent = new Agent({
+    headersTimeout: 10 * 60 * 1000,
+    bodyTimeout: 10 * 60 * 1000
+});
+
 module.exports = async function (message) {
     const args = message.content.split(' ').slice(1);
     const prompt = args.join(' ');
@@ -22,6 +28,7 @@ module.exports = async function (message) {
                 stream: false,
                 options: { think: true }
             }),
+            dispatcher: agent,
             signal: controller.signal
         });
         clearTimeout(timeout);

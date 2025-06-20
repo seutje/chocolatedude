@@ -1,3 +1,9 @@
+const { Agent } = require('undici');
+const agent = new Agent({
+    headersTimeout: 10 * 60 * 1000,
+    bodyTimeout: 10 * 60 * 1000
+});
+
 module.exports = async function (message) {
     const args = message.content.split(' ').slice(1);
     const prompt = args.join(' ');
@@ -17,6 +23,7 @@ module.exports = async function (message) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model: 'gemma3:12b-it-qat', prompt, stream: false }),
+            dispatcher: agent,
             signal: controller.signal
         });
         clearTimeout(timeout);

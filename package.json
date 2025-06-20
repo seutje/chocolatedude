@@ -19,7 +19,8 @@
     "spotify-url-info": "^3.2.18",
     "youtube-search-without-api-key": "^2.0.1",
     "ytdl-core": "npm:@distube/ytdl-core@^4.16.12",
-    "ytpl": "^2.3.0"
+    "ytpl": "^2.3.0",
+    "undici": "^6.21.3"
   },
   "devDependencies": {
     "jest": "^30.0.0"
