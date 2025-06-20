@@ -20,7 +20,10 @@ module.exports = async function (message) {
 
         const data = await response.json();
         const answer = data.response || data.message || 'No response';
-        message.channel.send(answer);
+
+        for (let i = 0; i < answer.length; i += 2000) {
+            await message.channel.send(answer.slice(i, i + 2000));
+        }
     } catch (error) {
         console.error('Error during !ask command:', error);
         message.channel.send('❌ Failed to get a response from the Ollama API.');
