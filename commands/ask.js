@@ -19,7 +19,8 @@ module.exports = async function (message) {
         }
 
         const data = await response.json();
-        const answer = data.response || data.message || 'No response';
+        let answer = data.response || data.message || 'No response';
+        answer = answer.replace(/<\/?think>/g, '🤔');
 
         for (let i = 0; i < answer.length; i += 2000) {
             await message.channel.send(answer.slice(i, i + 2000));
