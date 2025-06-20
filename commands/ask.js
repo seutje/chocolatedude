@@ -6,6 +6,9 @@ module.exports = async function (message) {
         return message.channel.send('❌ Please provide a prompt for the ask command.');
     }
 
+    // Let users know the bot is thinking before reaching out to the API
+    await message.channel.send('Let me think... (using deepseek-r1:7b)');
+
     try {
         const baseUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
         const response = await fetch(`${baseUrl}/api/generate`, {
@@ -20,7 +23,11 @@ module.exports = async function (message) {
 
         const data = await response.json();
         let answer = data.response || data.message || 'No response';
-        answer = answer.replace(/<\/?think>/g, '🤔');
+        // Replace <think> blocks with 🤔 emoji and italics, removing empty blocks
+        answer = answer.replace(/<think>([\s\S]*?)<\/think>/gi, (_, text) => {
+            const trimmed = text.trim();
+            return trimmed ? `🤔 *${trimmed}*` : '';
+        });
 
         for (let i = 0; i < answer.length; i += 2000) {
             await message.channel.send(answer.slice(i, i + 2000));
