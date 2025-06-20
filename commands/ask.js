@@ -14,7 +14,7 @@ module.exports = async function (message) {
         const response = await fetch(`${baseUrl}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-r1:7b', prompt, stream: false })
+            body: JSON.stringify({ model: 'deepseek-r1:7b', prompt, stream: false, think: true })
         });
 
         if (!response.ok) {
