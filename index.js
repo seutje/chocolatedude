@@ -26,6 +26,7 @@ const removeCommand = require('./commands/remove');
 const listenCommand = require('./commands/listen');
 const helpCommand = require('./commands/help');
 const askCommand = require('./commands/ask');
+const thinkCommand = require('./commands/think');
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -57,6 +58,8 @@ client.on('messageCreate', async (message) => {
         removeCommand(message, serverQueue);
     } else if (message.content.startsWith('!listen')) {
         await listenCommand(message, serverQueue);
+    } else if (message.content.startsWith('!think')) {
+        await thinkCommand(message);
     } else if (message.content.startsWith('!ask')) {
         await askCommand(message);
     } else if (message.content.startsWith('!help')) {

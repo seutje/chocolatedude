@@ -41,6 +41,7 @@ Text commands are prefixed with `!`:
 - `!shuffle` – shuffle upcoming songs.
 - `!remove <position>` – remove a song by its number in the queue.
 - `!ask <prompt>` – get a response from a local Ollama API.
+- `!think <prompt>` – get a thoughtful response from the qwen3:14b model.
 - `!help` – display a list of available commands.
 - `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip").
 
