@@ -11,11 +11,15 @@ module.exports = async function (message) {
 
     try {
         const baseUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
         const response = await fetch(`${baseUrl}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'gemma3:12b-it-qat', prompt, stream: false })
+            body: JSON.stringify({ model: 'gemma3:12b-it-qat', prompt, stream: false }),
+            signal: controller.signal
         });
+        clearTimeout(timeout);
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -71,7 +75,12 @@ module.exports = async function (message) {
             await message.channel.send(part.trimStart());
         }
     } catch (error) {
-        console.error('Error during !ask command:', error);
-        message.channel.send('❌ Failed to get a response from the Ollama API.');
+        if (error.name === 'AbortError') {
+            console.error('Timeout during !ask command:', error);
+            message.channel.send('❌ Request timed out. The server took too long to respond.');
+        } else {
+            console.error('Error during !ask command:', error);
+            message.channel.send('❌ Failed to get a response from the Ollama API.');
+        }
     }
 };
