@@ -95,6 +95,8 @@ module.exports = async function(message, serverQueue) {
             await require('./queue')(fakeMessage, serverQueue);
         } else if (text.startsWith('shuffle')) {
             require('./shuffle')(fakeMessage, serverQueue);
+        } else if (text.startsWith('ask')) {
+            await require('./ask')(fakeMessage);
         } else if (text.startsWith('help')) {
             require('./help')(fakeMessage);
         } else {
