@@ -44,7 +44,10 @@ module.exports = async function (message) {
             return stack;
         }
 
-        function splitResponse(text, maxLen = 2000) {
+        // Split long responses while keeping markdown formatting intact.
+        // Default chunk size is 1750 characters to stay well below
+        // Discord's 2000 character limit.
+        function splitResponse(text, maxLen = 1750) {
             const chunks = [];
             let prefix = '';
             while (text.length) {
