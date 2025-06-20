@@ -7,14 +7,14 @@ module.exports = async function (message) {
     }
 
     // Let users know the bot is thinking before reaching out to the API
-    await message.channel.send('Let me think... (using deepseek-r1:7b)');
+    await message.channel.send('Let me think... (using gemma3:4b)');
 
     try {
         const baseUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
         const response = await fetch(`${baseUrl}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-r1:7b', prompt, stream: false })
+            body: JSON.stringify({ model: 'gemma3:4b', prompt, stream: false })
         });
 
         if (!response.ok) {
