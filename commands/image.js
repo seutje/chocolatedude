@@ -1,3 +1,5 @@
+const { fetch, Agent } = require('undici');
+
 module.exports = async function (message) {
     const args = message.content.split(' ').slice(1);
     const prompt = args.join(' ');
@@ -12,10 +14,12 @@ module.exports = async function (message) {
     const apiUrl = process.env.DIFFUSION_URL || 'http://localhost:5000/generate_and_upscale';
 
     try {
+        const agent = new Agent({ headersTimeout: 10 * 60 * 1000 });
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt })
+            body: JSON.stringify({ prompt }),
+            dispatcher: agent
         });
 
         if (!response.ok) {
