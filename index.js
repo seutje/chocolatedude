@@ -27,6 +27,7 @@ const listenCommand = require('./commands/listen');
 const helpCommand = require('./commands/help');
 const askCommand = require('./commands/ask');
 const thinkCommand = require('./commands/think');
+const imageCommand = require('./commands/image');
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -62,6 +63,8 @@ client.on('messageCreate', async (message) => {
         await thinkCommand(message);
     } else if (message.content.startsWith('!ask')) {
         await askCommand(message);
+    } else if (message.content.startsWith('!image')) {
+        await imageCommand(message);
     } else if (message.content.startsWith('!help')) {
         helpCommand(message);
     }
