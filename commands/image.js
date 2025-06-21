@@ -9,7 +9,7 @@ module.exports = async function (message) {
     // Notify the user before starting generation
     await message.channel.send('Please wait for the generation to complete...');
 
-    const apiUrl = 'http://localhost:5000/generate_and_upscale';
+    const apiUrl = process.env.DIFFUSION_URL || 'http://localhost:5000/generate_and_upscale';
 
     try {
         const response = await fetch(apiUrl, {
