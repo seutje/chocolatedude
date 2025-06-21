@@ -99,6 +99,8 @@ module.exports = async function(message, serverQueue) {
             await require('./think')(fakeMessage);
         } else if (text.startsWith('ask')) {
             await require('./ask')(fakeMessage);
+        } else if (text.startsWith('image')) {
+            await require('./image')(fakeMessage);
         } else if (text.startsWith('help')) {
             require('./help')(fakeMessage);
         } else {

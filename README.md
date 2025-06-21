@@ -44,7 +44,7 @@ Text commands are prefixed with `!`:
 - `!think <prompt>` – get a thoughtful response from the qwen3:14b model.
 - `!image <prompt>` – generate an image using the local API.
 - `!help` – display a list of available commands.
-- `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip").
+- `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip", "image").
 
 ## Testing
 

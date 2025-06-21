@@ -13,7 +13,7 @@ module.exports = function (message) {
         '!remove <position> - remove a song by its number in the queue.',
         '!ask <prompt> - ask a question using the local Ollama API.',
         '!image <prompt> - generate an image using the local API.',
-        '!listen - record a short voice message and execute the spoken command.',
+        '!listen - record a short voice message and execute the spoken command (e.g. play, skip, image).',
         '!help - show this message.'
     ].join('\n');
 
