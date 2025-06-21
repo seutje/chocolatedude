@@ -7,7 +7,7 @@ module.exports = async function (message) {
     }
 
     // Notify the user before starting generation
-    await message.channel.send('Please wait for the generation to complete...');
+    await message.channel.send('⏳ Generating image, please wait...');
 
     const apiUrl = process.env.DIFFUSION_URL || 'http://localhost:5000/generate_and_upscale';
 
