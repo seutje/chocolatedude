@@ -48,7 +48,13 @@ module.exports = async function (message) {
         }
 
         const buffer = Buffer.from(result.image_base64, 'base64');
-        await message.channel.send({ files: [{ attachment: buffer, name: 'image.png' }] });
+        const captionParts = [`Prompt: ${prompt}`];
+        if (seed !== undefined) captionParts.push(`Seed: ${seed}`);
+        const caption = captionParts.join(' | ');
+        await message.channel.send({
+            content: caption,
+            files: [{ attachment: buffer, name: 'image.png' }]
+        });
     } catch (error) {
         console.error('Error during !image command:', error);
         message.channel.send('❌ Failed to generate the image.');
