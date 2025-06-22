@@ -1,4 +1,5 @@
 const { fetch, Agent } = require('undici');
+const { spawn } = require('child_process');
 const lock = require('../commandLock');
 
 let isMusicRequestActive = false;
@@ -43,8 +44,33 @@ module.exports = async function (message) {
             throw new Error("Response missing 'audio_base64'");
         }
 
-        const buffer = Buffer.from(result.audio_base64, 'base64');
-        await message.channel.send({ files: [{ attachment: buffer, name: 'music.mp3' }] });
+        const flacBuffer = Buffer.from(result.audio_base64, 'base64');
+
+        // Convert FLAC to MP3 using ffmpeg from the system path
+        const ffmpeg = spawn('ffmpeg', [
+            '-i', 'pipe:0',
+            '-f', 'mp3',
+            'pipe:1'
+        ]);
+
+        const mp3Chunks = [];
+        ffmpeg.stdout.on('data', chunk => mp3Chunks.push(chunk));
+
+        const conversionPromise = new Promise((resolve, reject) => {
+            ffmpeg.on('close', code => {
+                if (code === 0) resolve();
+                else reject(new Error(`ffmpeg exited with code ${code}`));
+            });
+            ffmpeg.on('error', reject);
+        });
+
+        ffmpeg.stdin.write(flacBuffer);
+        ffmpeg.stdin.end();
+
+        await conversionPromise;
+
+        const mp3Buffer = Buffer.concat(mp3Chunks);
+        await message.channel.send({ files: [{ attachment: mp3Buffer, name: 'music.mp3' }] });
     } catch (error) {
         console.error('Error during !music command:', error);
         message.channel.send('❌ Failed to generate the music.');
