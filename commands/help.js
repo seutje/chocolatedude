@@ -13,7 +13,7 @@ module.exports = function (message) {
         '!remove <position> - remove a song by its number in the queue.',
         '!ask <prompt> - ask a question using the local Ollama API. Attach images to include them with the prompt.',
         '!image[:seed] <prompt> - generate an image using the API at DIFFUSION_URL. The resulting seed will be displayed with the image.',
-        '!music <prompt> - generate music using the API at MUSIC_URL.',
+        '!music[:length] <prompt> [--lyrics text] - generate music using the API at MUSIC_URL. Specify a length like !music:120 and optionally provide lyrics.',
         '!listen - record a short voice message and execute the spoken command (e.g. play, skip, image).',
         '!help - show this message.'
     ].join('\n');

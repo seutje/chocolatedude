@@ -5,8 +5,17 @@ const lock = require('../commandLock');
 let isMusicRequestActive = false;
 
 module.exports = async function (message) {
-    const match = message.content.match(/^!music\s+(.*)$/s);
-    const prompt = match ? match[1].trim() : '';
+    const match = message.content.match(/^!music(?::(\d+))?\s*(.*)$/s);
+    const length = match && match[1] ? parseInt(match[1], 10) : undefined;
+    let remainder = match ? match[2].trim() : '';
+
+    let lyrics;
+    const lyricsIndex = remainder.indexOf('--lyrics');
+    if (lyricsIndex !== -1) {
+        lyrics = remainder.slice(lyricsIndex + 8).trim();
+        remainder = remainder.slice(0, lyricsIndex).trim();
+    }
+    const prompt = remainder;
 
     if (isMusicRequestActive || !lock.acquire()) {
         return message.channel.send('❌ Another request is already in progress. Please wait for it to finish.');
@@ -28,6 +37,8 @@ module.exports = async function (message) {
     try {
         const agent = new Agent({ headersTimeout: 20 * 60 * 1000 });
         const payload = { prompt };
+        if (length) payload.length = length;
+        if (lyrics) payload.lyrics = lyrics;
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
