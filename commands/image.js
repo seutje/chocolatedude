@@ -5,8 +5,9 @@ const lock = require('../commandLock');
 let isImageRequestActive = false;
 
 module.exports = async function (message) {
-    const args = message.content.split(' ').slice(1);
-    const prompt = args.join(' ');
+    const match = message.content.match(/^!image(?::(\d+))?\s*(.*)$/s);
+    const seed = match && match[1] ? parseInt(match[1], 10) : undefined;
+    const prompt = match ? match[2].trim() : '';
 
     if (isImageRequestActive || !lock.acquire()) {
         return message.channel.send('❌ Another request is already in progress. Please wait for it to finish.');
@@ -28,10 +29,12 @@ module.exports = async function (message) {
 
     try {
         const agent = new Agent({ headersTimeout: 10 * 60 * 1000 });
+        const payload = { prompt };
+        if (seed !== undefined) payload.seed = seed;
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            body: JSON.stringify(payload),
             dispatcher: agent
         });
 
@@ -45,7 +48,14 @@ module.exports = async function (message) {
         }
 
         const buffer = Buffer.from(result.image_base64, 'base64');
-        await message.channel.send({ files: [{ attachment: buffer, name: 'image.png' }] });
+        const usedSeed = result.seed !== undefined ? result.seed : seed;
+        const captionParts = [`Prompt: ${prompt}`];
+        if (usedSeed !== undefined) captionParts.push(`Seed: ${usedSeed}`);
+        const caption = captionParts.join(' | ');
+        await message.channel.send({
+            content: caption,
+            files: [{ attachment: buffer, name: 'image.png' }]
+        });
     } catch (error) {
         console.error('Error during !image command:', error);
         message.channel.send('❌ Failed to generate the image.');

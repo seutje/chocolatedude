@@ -12,7 +12,7 @@ module.exports = function (message) {
         '!shuffle - shuffle upcoming songs.',
         '!remove <position> - remove a song by its number in the queue.',
         '!ask <prompt> - ask a question using the local Ollama API. Attach images to include them with the prompt.',
-        '!image <prompt> - generate an image using the API at DIFFUSION_URL.',
+        '!image[:seed] <prompt> - generate an image using the API at DIFFUSION_URL. The resulting seed will be displayed with the image.',
         '!listen - record a short voice message and execute the spoken command (e.g. play, skip, image).',
         '!help - show this message.'
     ].join('\n');
