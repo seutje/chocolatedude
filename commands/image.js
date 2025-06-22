@@ -48,8 +48,9 @@ module.exports = async function (message) {
         }
 
         const buffer = Buffer.from(result.image_base64, 'base64');
+        const usedSeed = result.seed !== undefined ? result.seed : seed;
         const captionParts = [`Prompt: ${prompt}`];
-        if (seed !== undefined) captionParts.push(`Seed: ${seed}`);
+        if (usedSeed !== undefined) captionParts.push(`Seed: ${usedSeed}`);
         const caption = captionParts.join(' | ');
         await message.channel.send({
             content: caption,
