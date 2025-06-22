@@ -36,46 +36,7 @@ module.exports = async function streamOllamaResponse(message, { model, prompt, i
     const reader = response.body.getReader();
     let jsonBuffer = '';
     let textBuffer = '';
-    let leftoverTag = '';
     let prefix = '';
-    let inThink = false;
-    let thinkBuffer = '';
-
-    const isTagPrefix = (str) => '<think>'.startsWith(str) || '</think>'.startsWith(str);
-
-    function transformChunk(chunk) {
-        chunk = leftoverTag + chunk;
-        leftoverTag = '';
-        let result = '';
-        for (let i = 0; i < chunk.length;) {
-            if (!inThink && chunk.startsWith('<think>', i)) {
-                inThink = true;
-                i += 7;
-                continue;
-            }
-            if (inThink && chunk.startsWith('</think>', i)) {
-                inThink = false;
-                i += 8;
-                result += `🤔 ${thinkBuffer.trim()} 🤔`;
-                thinkBuffer = '';
-                continue;
-            }
-            if (chunk[i] === '<') {
-                const remaining = chunk.slice(i);
-                if ((!inThink && isTagPrefix(remaining)) || (inThink && '</think>'.startsWith(remaining))) {
-                    leftoverTag = remaining;
-                    break;
-                }
-            }
-            if (inThink) {
-                thinkBuffer += chunk[i];
-            } else {
-                result += chunk[i];
-            }
-            i++;
-        }
-        return result;
-    }
 
     async function flushChunks(force = false) {
         while (textBuffer.length >= 1750 || (force && textBuffer.length)) {
@@ -104,10 +65,9 @@ module.exports = async function streamOllamaResponse(message, { model, prompt, i
             if (!line.trim()) continue;
             const data = JSON.parse(line);
             if (data.done) {
-                textBuffer += transformChunk('');
                 await flushChunks(true);
             } else if (data.response) {
-                textBuffer += transformChunk(data.response);
+                textBuffer += data.response;
                 await flushChunks();
             }
         }
@@ -115,7 +75,7 @@ module.exports = async function streamOllamaResponse(message, { model, prompt, i
     if (jsonBuffer.trim()) {
         const data = JSON.parse(jsonBuffer);
         if (data.response) {
-            textBuffer += transformChunk(data.response);
+            textBuffer += data.response;
         }
     }
     await flushChunks(true);
