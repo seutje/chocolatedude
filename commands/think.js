@@ -69,7 +69,7 @@ module.exports = async function (message) {
                 if (inThink && chunk.startsWith('</think>', i)) {
                     inThink = false;
                     i += 8;
-                    result += `🤔 *${thinkBuffer.trim()}* 🤔`;
+                    result += `🤔 ${thinkBuffer.trim()} 🤔`;
                     thinkBuffer = '';
                     continue;
                 }

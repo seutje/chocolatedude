@@ -42,10 +42,10 @@ module.exports = async function (message) {
 
         const data = await response.json();
         let answer = data.response || data.message || 'No response';
-        // Replace <think> blocks with 🤔 emoji and italics, removing empty blocks
+        // Replace <think> blocks with 🤔 emoji, removing empty blocks
         answer = answer.replace(/<think>([\s\S]*?)<\/think>/gi, (_, text) => {
             const trimmed = text.trim();
-            return trimmed ? `🤔 *${trimmed}* 🤔` : '';
+            return trimmed ? `🤔 ${trimmed} 🤔` : '';
         });
 
         function computeUnclosed(str) {
