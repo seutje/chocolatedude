@@ -11,6 +11,8 @@ ChocolateDude is a Discord music bot written in Node.js. It can play music from 
   `http://127.0.0.1:11434`)
 - The image generation endpoint stored as `DIFFUSION_URL` (defaults to
   `http://localhost:5000/generate_and_upscale`)
+- The music generation endpoint stored as `MUSIC_URL` (defaults to
+  `http://localhost:8000`)
 - Optional `CHAT_HISTORY_LIMIT` to control how many messages of context the `!chat` command keeps (defaults to `50`)
 
 The bot relies on the [`nodejs-whisper`](https://www.npmjs.com/package/nodejs-whisper) package which wraps OpenAI's Whisper model. The Whisper model files will be downloaded automatically on first use.
@@ -47,10 +49,11 @@ Text commands are prefixed with `!`:
 - `!chat <prompt>` – converse with the gemma3:12b-it-qat model via `/api/chat`. Previous prompts and responses are kept so the model has context. Attach images to include them with the prompt.
 - `!think <prompt>` – get a thoughtful response from the qwen3:14b model.
 - `!image[:seed] <prompt>` – generate an image using the API at `DIFFUSION_URL`. If a numeric seed is provided, it will be sent along with the prompt and the resulting seed will be shown with the image.
+- `!music <prompt>` – generate music using the API at `MUSIC_URL`.
 - `!help` – display a list of available commands.
 - `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip", "image").
 
-Only one of `!ask`, `!chat`, `!think` or `!image` can run at a time.
+Only one of `!ask`, `!chat`, `!think`, `!image` or `!music` can run at a time.
 
 ## Testing
 
