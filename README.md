@@ -42,8 +42,8 @@ Text commands are prefixed with `!`:
 - `!search <terms>` – show top YouTube results.
 - `!shuffle` – shuffle upcoming songs.
 - `!remove <position>` – remove a song by its number in the queue.
-- `!ask <prompt>` – get a response from a local Ollama API. Attach images to include them with the prompt.
-- `!think <prompt>` – get a thoughtful response from the qwen3:14b model.
+- `!ask <prompt>` – get a response from a local Ollama API. Attach images to include them with the prompt. Consecutive calls keep the conversation context.
+- `!think <prompt>` – get a thoughtful response from the qwen3:14b model and also continues the conversation from the previous reply.
 - `!image <prompt>` – generate an image using the API at `DIFFUSION_URL`.
 - `!help` – display a list of available commands.
 - `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip", "image").

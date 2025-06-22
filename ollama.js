@@ -13,11 +13,12 @@ function computeUnclosed(str) {
     return stack;
 }
 
-module.exports = async function streamOllamaResponse(message, { model, prompt, images = [], options } = {}) {
+module.exports = async function streamOllamaResponse(message, { model, prompt, images = [], options, context } = {}) {
     const baseUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
     const body = { model, prompt, stream: true };
     if (images.length) body.images = images;
     if (options) body.options = options;
+    if (context) body.context = context;
 
     const response = await fetch(`${baseUrl}/api/generate`, {
         method: 'POST',
@@ -37,6 +38,7 @@ module.exports = async function streamOllamaResponse(message, { model, prompt, i
     let jsonBuffer = '';
     let textBuffer = '';
     let prefix = '';
+    let lastContext;
 
     async function flushChunks(force = false) {
         while (textBuffer.length >= 1750 || (force && textBuffer.length)) {
@@ -64,6 +66,7 @@ module.exports = async function streamOllamaResponse(message, { model, prompt, i
         for (const line of lines) {
             if (!line.trim()) continue;
             const data = JSON.parse(line);
+            if (data.context) lastContext = data.context;
             if (data.done) {
                 await flushChunks(true);
             } else if (data.response) {
@@ -74,9 +77,11 @@ module.exports = async function streamOllamaResponse(message, { model, prompt, i
     }
     if (jsonBuffer.trim()) {
         const data = JSON.parse(jsonBuffer);
+        if (data.context) lastContext = data.context;
         if (data.response) {
             textBuffer += data.response;
         }
     }
     await flushChunks(true);
+    return lastContext;
 };

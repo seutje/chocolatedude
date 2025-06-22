@@ -1,4 +1,5 @@
 const streamOllama = require('../ollama');
+const { getContext, setContext } = require('../contextStore');
 
 module.exports = async function (message) {
     const args = message.content.split(' ').slice(1);
@@ -12,7 +13,9 @@ module.exports = async function (message) {
     await message.channel.send('Let me think... (using qwen3:14b)');
 
     try {
-        await streamOllama(message, { model: 'qwen3:14b', prompt, options: { think: true } });
+        const context = getContext(message.author.id);
+        const newContext = await streamOllama(message, { model: 'qwen3:14b', prompt, options: { think: true }, context });
+        setContext(message.author.id, newContext);
     } catch (error) {
         console.error('Error during !think command:', error);
         message.channel.send('❌ Failed to get a response from the Ollama API.');
