@@ -45,7 +45,7 @@ module.exports = async function (message) {
         // Replace <think> blocks with 🤔 emoji and italics, removing empty blocks
         answer = answer.replace(/<think>([\s\S]*?)<\/think>/gi, (_, text) => {
             const trimmed = text.trim();
-            return trimmed ? `🤔 *${trimmed}*` : '';
+            return trimmed ? `🤔 *${trimmed}* 🤔` : '';
         });
 
         function computeUnclosed(str) {
