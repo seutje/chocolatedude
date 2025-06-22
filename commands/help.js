@@ -11,7 +11,7 @@ module.exports = function (message) {
         '!search <terms> - show top YouTube results.',
         '!shuffle - shuffle upcoming songs.',
         '!remove <position> - remove a song by its number in the queue.',
-        '!ask <prompt> - ask a question using the local Ollama API.',
+        '!ask <prompt> - ask a question using the local Ollama API. Attach images to include them with the prompt.',
         '!image <prompt> - generate an image using the API at DIFFUSION_URL.',
         '!listen - record a short voice message and execute the spoken command (e.g. play, skip, image).',
         '!help - show this message.'

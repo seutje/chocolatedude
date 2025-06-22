@@ -2,6 +2,23 @@ module.exports = async function (message) {
     const args = message.content.split(' ').slice(1);
     const prompt = args.join(' ');
 
+    const images = [];
+    for (const attachment of message.attachments.values()) {
+        if (attachment.contentType?.startsWith('image/') || attachment.height) {
+            try {
+                const res = await fetch(attachment.url);
+                if (res.ok) {
+                    const buf = Buffer.from(await res.arrayBuffer());
+                    images.push(buf.toString('base64'));
+                } else {
+                    console.warn('Failed to fetch attachment:', res.status);
+                }
+            } catch (err) {
+                console.warn('Error fetching attachment', err);
+            }
+        }
+    }
+
     if (!prompt) {
         return message.channel.send('❌ Please provide a prompt for the ask command.');
     }
@@ -11,10 +28,12 @@ module.exports = async function (message) {
 
     try {
         const baseUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+        const body = { model: 'gemma3:12b-it-qat', prompt, stream: false };
+        if (images.length) body.images = images;
         const response = await fetch(`${baseUrl}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'gemma3:12b-it-qat', prompt, stream: false })
+            body: JSON.stringify(body)
         });
 
         if (!response.ok) {
