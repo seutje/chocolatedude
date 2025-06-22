@@ -1,4 +1,5 @@
 const streamOllama = require('../ollama');
+const lock = require('../commandLock');
 
 module.exports = async function (message) {
     const args = message.content.split(' ').slice(1);
@@ -6,6 +7,10 @@ module.exports = async function (message) {
 
     if (!prompt) {
         return message.channel.send('❌ Please provide a prompt for the think command.');
+    }
+
+    if (!lock.acquire()) {
+        return message.channel.send('❌ Another request is already in progress. Please wait for it to finish.');
     }
 
     // Let users know the bot is thinking before reaching out to the API
@@ -16,5 +21,7 @@ module.exports = async function (message) {
     } catch (error) {
         console.error('Error during !think command:', error);
         message.channel.send('❌ Failed to get a response from the Ollama API.');
+    } finally {
+        lock.release();
     }
 };

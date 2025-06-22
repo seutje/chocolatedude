@@ -1,4 +1,5 @@
 const { fetch, Agent } = require('undici');
+const lock = require('../commandLock');
 
 // Track whether an image generation request is in progress
 let isImageRequestActive = false;
@@ -7,8 +8,8 @@ module.exports = async function (message) {
     const args = message.content.split(' ').slice(1);
     const prompt = args.join(' ');
 
-    if (isImageRequestActive) {
-        return message.channel.send('❌ An image is already being generated. Please wait for it to finish.');
+    if (isImageRequestActive || !lock.acquire()) {
+        return message.channel.send('❌ Another request is already in progress. Please wait for it to finish.');
     }
 
     if (!prompt) {
@@ -20,6 +21,7 @@ module.exports = async function (message) {
     isImageRequestActive = true;
     const resetTimeout = setTimeout(() => {
         isImageRequestActive = false;
+        lock.release();
     }, 10 * 60 * 1000); // safety timeout matching the request timeout
 
     const apiUrl = process.env.DIFFUSION_URL || 'http://localhost:5000/generate_and_upscale';
@@ -50,5 +52,6 @@ module.exports = async function (message) {
     } finally {
         clearTimeout(resetTimeout);
         isImageRequestActive = false;
+        lock.release();
     }
 };
