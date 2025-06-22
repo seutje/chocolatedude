@@ -50,6 +50,8 @@ Text commands are prefixed with `!`:
 - `!help` – display a list of available commands.
 - `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip", "image").
 
+Only one of `!ask`, `!chat`, `!think` or `!image` can run at a time.
+
 ## Testing
 
 Run the unit tests with:

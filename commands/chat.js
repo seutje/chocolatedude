@@ -1,4 +1,5 @@
 const streamOllama = require('../ollama');
+const lock = require('../commandLock');
 
 // Track chat history per channel so conversations have context
 // Only the last MAX_HISTORY messages are kept per channel
@@ -30,6 +31,10 @@ module.exports = async function (message) {
         return message.channel.send('❌ Please provide a prompt for the chat command.');
     }
 
+    if (!lock.acquire()) {
+        return message.channel.send('❌ Another request is already in progress. Please wait for it to finish.');
+    }
+
     await message.channel.send('Let me think... (using gemma3:12b-it-qat)');
 
     try {
@@ -45,5 +50,7 @@ module.exports = async function (message) {
     } catch (error) {
         console.error('Error during !chat command:', error);
         message.channel.send('❌ Failed to get a response from the Ollama API.');
+    } finally {
+        lock.release();
     }
 };
