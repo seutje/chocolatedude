@@ -42,10 +42,10 @@ module.exports = async function (message) {
 
         const data = await response.json();
         let answer = data.response || data.message || 'No response';
-        // Replace <think> blocks with 🤔 emoji and italics, removing empty blocks
+        // Replace <think> blocks with 🤔 emoji, removing empty blocks
         answer = answer.replace(/<think>([\s\S]*?)<\/think>/gi, (_, text) => {
             const trimmed = text.trim();
-            return trimmed ? `🤔 *${trimmed}*` : '';
+            return trimmed ? `🤔 ${trimmed} 🤔` : '';
         });
 
         function computeUnclosed(str) {
@@ -70,18 +70,18 @@ module.exports = async function (message) {
             const chunks = [];
             let prefix = '';
             while (text.length) {
-                let chunk = text.slice(0, maxLen);
+                let part = text.slice(0, maxLen);
                 if (text.length > maxLen) {
-                    let splitPos = Math.max(chunk.lastIndexOf('\n'), chunk.lastIndexOf(' '));
+                    let splitPos = Math.max(part.lastIndexOf('\n'), part.lastIndexOf(' '));
                     if (splitPos <= 0) splitPos = maxLen;
-                    chunk = text.slice(0, splitPos);
+                    part = text.slice(0, splitPos);
                 }
-                chunk = prefix + chunk;
+                const chunk = prefix + part;
                 const unclosed = computeUnclosed(chunk);
                 const closing = unclosed.slice().reverse().join('');
                 chunks.push(chunk + closing);
                 prefix = unclosed.join('');
-                text = text.slice(chunk.length - prefix.length);
+                text = text.slice(part.length);
             }
             return chunks;
         }

@@ -51,6 +51,8 @@ module.exports = async function (message) {
         let textBuffer = '';
         let leftoverTag = '';
         let prefix = '';
+        let inThink = false;
+        let thinkBuffer = '';
 
         const isTagPrefix = (str) => '<think>'.startsWith(str) || '</think>'.startsWith(str);
 
@@ -58,39 +60,50 @@ module.exports = async function (message) {
             chunk = leftoverTag + chunk;
             leftoverTag = '';
             let result = '';
-            let last = 0;
-            const regex = /<think>|<\/think>/g;
-            let m;
-            while ((m = regex.exec(chunk)) !== null) {
-                result += chunk.slice(last, m.index);
-                result += m[0] === '<think>' ? '🤔 *' : '*';
-                last = m.index + m[0].length;
-            }
-            let remaining = chunk.slice(last);
-            const lastOpen = remaining.lastIndexOf('<');
-            if (lastOpen !== -1 && isTagPrefix(remaining.slice(lastOpen))) {
-                result += remaining.slice(0, lastOpen);
-                leftoverTag = remaining.slice(lastOpen);
-            } else {
-                result += remaining;
+            for (let i = 0; i < chunk.length; ) {
+                if (!inThink && chunk.startsWith('<think>', i)) {
+                    inThink = true;
+                    i += 7;
+                    continue;
+                }
+                if (inThink && chunk.startsWith('</think>', i)) {
+                    inThink = false;
+                    i += 8;
+                    result += `🤔 ${thinkBuffer.trim()} 🤔`;
+                    thinkBuffer = '';
+                    continue;
+                }
+                if (chunk[i] === '<') {
+                    const remaining = chunk.slice(i);
+                    if (!inThink && isTagPrefix(remaining) || inThink && '</think>'.startsWith(remaining)) {
+                        leftoverTag = remaining;
+                        break;
+                    }
+                }
+                if (inThink) {
+                    thinkBuffer += chunk[i];
+                } else {
+                    result += chunk[i];
+                }
+                i++;
             }
             return result;
         }
 
         async function flushChunks(force = false) {
             while (textBuffer.length >= 1750 || (force && textBuffer.length)) {
-                let chunk = textBuffer.slice(0, 1750);
+                let part = textBuffer.slice(0, 1750);
                 if (textBuffer.length > 1750) {
-                    let splitPos = Math.max(chunk.lastIndexOf('\n'), chunk.lastIndexOf(' '));
+                    let splitPos = Math.max(part.lastIndexOf('\n'), part.lastIndexOf(' '));
                     if (splitPos <= 0) splitPos = 1750;
-                    chunk = textBuffer.slice(0, splitPos);
+                    part = textBuffer.slice(0, splitPos);
                 }
-                chunk = prefix + chunk;
+                const chunk = prefix + part;
                 const unclosed = computeUnclosed(chunk);
                 const closing = unclosed.slice().reverse().join('');
                 await message.channel.send((chunk + closing).trimStart());
                 prefix = unclosed.join('');
-                textBuffer = textBuffer.slice(chunk.length - prefix.length);
+                textBuffer = textBuffer.slice(part.length);
             }
         }
 
