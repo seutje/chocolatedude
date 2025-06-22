@@ -104,6 +104,7 @@ module.exports.chat = async function streamOllamaChat(message, { model, messages
     let jsonBuffer = '';
     let textBuffer = '';
     let prefix = '';
+    let fullText = '';
 
     async function flushChunks(force = false) {
         while (textBuffer.length >= 1750 || (force && textBuffer.length)) {
@@ -135,6 +136,7 @@ module.exports.chat = async function streamOllamaChat(message, { model, messages
                 await flushChunks(true);
             } else if (data.message && data.message.content) {
                 textBuffer += data.message.content;
+                fullText += data.message.content;
                 await flushChunks();
             }
         }
@@ -143,7 +145,9 @@ module.exports.chat = async function streamOllamaChat(message, { model, messages
         const data = JSON.parse(jsonBuffer);
         if (data.message && data.message.content) {
             textBuffer += data.message.content;
+            fullText += data.message.content;
         }
     }
     await flushChunks(true);
+    return fullText;
 };
