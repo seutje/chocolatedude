@@ -11,6 +11,7 @@ ChocolateDude is a Discord music bot written in Node.js. It can play music from 
   `http://127.0.0.1:11434`)
 - The image generation endpoint stored as `DIFFUSION_URL` (defaults to
   `http://localhost:5000/generate_and_upscale`)
+- Optional `CHAT_HISTORY_LIMIT` to control how many messages of context the `!chat` command keeps (defaults to `50`)
 
 The bot relies on the [`nodejs-whisper`](https://www.npmjs.com/package/nodejs-whisper) package which wraps OpenAI's Whisper model. The Whisper model files will be downloaded automatically on first use.
 

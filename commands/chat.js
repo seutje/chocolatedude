@@ -1,8 +1,9 @@
 const streamOllama = require('../ollama');
 
 // Track chat history per channel so conversations have context
-// Only the last 20 messages are kept per channel
+// Only the last MAX_HISTORY messages are kept per channel
 const histories = new Map();
+const MAX_HISTORY = parseInt(process.env.CHAT_HISTORY_LIMIT || '50', 10); // configurable via env
 
 module.exports = async function (message) {
     const args = message.content.split(' ').slice(1);
@@ -40,7 +41,7 @@ module.exports = async function (message) {
         const reply = await streamOllama.chat(message, { model: 'gemma3:12b-it-qat', messages: history });
 
         history.push({ role: 'assistant', content: reply });
-        histories.set(message.channel.id, history.slice(-20));
+        histories.set(message.channel.id, history.slice(-MAX_HISTORY));
     } catch (error) {
         console.error('Error during !chat command:', error);
         message.channel.send('❌ Failed to get a response from the Ollama API.');
