@@ -43,6 +43,7 @@ Text commands are prefixed with `!`:
 - `!shuffle` – shuffle upcoming songs.
 - `!remove <position>` – remove a song by its number in the queue.
 - `!ask <prompt>` – get a response from a local Ollama API. Attach images to include them with the prompt.
+- `!chat <prompt>` – chat with the gemma3:12b-it-qat model using the `/api/chat` endpoint. Attach images to include them with the prompt.
 - `!think <prompt>` – get a thoughtful response from the qwen3:14b model.
 - `!image <prompt>` – generate an image using the API at `DIFFUSION_URL`.
 - `!help` – display a list of available commands.
