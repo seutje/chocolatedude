@@ -23,12 +23,12 @@ module.exports = async function (message) {
     const resetTimeout = setTimeout(() => {
         isImageRequestActive = false;
         lock.release();
-    }, 10 * 60 * 1000); // safety timeout matching the request timeout
+    }, 20 * 60 * 1000); // safety timeout matching the request timeout
 
     const apiUrl = process.env.DIFFUSION_URL || 'http://localhost:5000/generate_and_upscale';
 
     try {
-        const agent = new Agent({ headersTimeout: 10 * 60 * 1000 });
+        const agent = new Agent({ headersTimeout: 20 * 60 * 1000 });
         const payload = { prompt };
         if (seed !== undefined) payload.seed = seed;
         const response = await fetch(apiUrl, {
