@@ -79,18 +79,18 @@ module.exports = async function (message) {
 
         async function flushChunks(force = false) {
             while (textBuffer.length >= 1750 || (force && textBuffer.length)) {
-                let chunk = textBuffer.slice(0, 1750);
+                let part = textBuffer.slice(0, 1750);
                 if (textBuffer.length > 1750) {
-                    let splitPos = Math.max(chunk.lastIndexOf('\n'), chunk.lastIndexOf(' '));
+                    let splitPos = Math.max(part.lastIndexOf('\n'), part.lastIndexOf(' '));
                     if (splitPos <= 0) splitPos = 1750;
-                    chunk = textBuffer.slice(0, splitPos);
+                    part = textBuffer.slice(0, splitPos);
                 }
-                chunk = prefix + chunk;
+                const chunk = prefix + part;
                 const unclosed = computeUnclosed(chunk);
                 const closing = unclosed.slice().reverse().join('');
                 await message.channel.send((chunk + closing).trimStart());
                 prefix = unclosed.join('');
-                textBuffer = textBuffer.slice(chunk.length - prefix.length);
+                textBuffer = textBuffer.slice(part.length);
             }
         }
 
