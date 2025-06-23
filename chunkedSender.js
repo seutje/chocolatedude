@@ -1,9 +1,10 @@
 function computeUnclosed(str) {
     const stack = [];
-    const re = /(\*{1,3})/g; // handle only asterisks, ignore underscores
+    // capture discord markdown tokens: *, **, ***, _, __, `, ```
+    const re = /(`{3,}|`|\*{1,3}|_{1,2})/g;
     let m;
     while ((m = re.exec(str)) !== null) {
-        const token = m[1];
+        const token = m[0];
         if (stack.length && stack[stack.length - 1] === token) {
             stack.pop();
         } else {
@@ -23,8 +24,13 @@ function createChunkSender(channel) {
         while (textBuffer.length >= CHUNK_SIZE || (force && textBuffer.length)) {
             let part = textBuffer.slice(0, CHUNK_SIZE);
             if (textBuffer.length > CHUNK_SIZE) {
-                let splitPos = Math.max(part.lastIndexOf('\n'), part.lastIndexOf(' '));
-                if (splitPos <= 0) splitPos = CHUNK_SIZE;
+                let splitPos = part.lastIndexOf('\n');
+                if (splitPos > 0) {
+                    splitPos += 1; // keep newline with the first chunk
+                } else {
+                    splitPos = part.lastIndexOf(' ');
+                    if (splitPos <= 0) splitPos = CHUNK_SIZE;
+                }
                 part = textBuffer.slice(0, splitPos);
             }
             const chunk = prefix + part;
