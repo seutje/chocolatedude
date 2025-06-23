@@ -17,7 +17,8 @@ module.exports = async function (message) {
 
         let responseMessage = '🔍 **Top 10 YouTube Search Results:**\n';
         searchResults.slice(0, 10).forEach((result, index) => {
-            responseMessage += `${index + 1}. **${result.title}**\n   URL: <${result.url}>\n`;
+            const duration = result.duration_raw || (result.snippet && result.snippet.duration) || 'N/A';
+            responseMessage += `${index + 1}. **${result.title}** (${duration})\n   URL: <${result.url}>\n`;
         });
 
         message.channel.send(responseMessage);
