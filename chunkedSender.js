@@ -1,18 +1,46 @@
 function computeUnclosed(str) {
     const stack = [];
-    // capture discord markdown tokens: *, **, ***, _, __, `, ```
-    // ignore list markers or underscores followed by whitespace
-    const re = /(`{3,}|`|\*{1,3}(?!\s)|_{1,2}(?!\s))/g;
+    const re = /(```|`|\*{1,3}|_{1,2})/g;
     let m;
+    let inFence = false;
+    let inInline = false;
     while ((m = re.exec(str)) !== null) {
         const token = m[0];
-        if (token.startsWith('_')) {
+
+        if (token === '```') {
+            if (stack.length && stack[stack.length - 1] === '```') {
+                stack.pop();
+            } else {
+                stack.push('```');
+            }
+            inFence = !inFence;
+            continue;
+        }
+
+        if (inFence) continue;
+
+        if (token === '`') {
+            if (stack.length && stack[stack.length - 1] === '`') {
+                stack.pop();
+                inInline = false;
+            } else {
+                stack.push('`');
+                inInline = true;
+            }
+            continue;
+        }
+
+        if (inInline) continue;
+
+        if (token.startsWith('*')) {
+            if (/\s/.test(str[m.index + token.length])) continue;
+        } else if (token.startsWith('_')) {
+            if (/\s/.test(str[m.index + token.length])) continue;
             const prev = str[m.index - 1];
             const next = str[m.index + token.length];
-            if (prev !== undefined && next !== undefined && /\w/.test(prev) && /\w/.test(next)) {
-                continue; // ignore foo_bar
-            }
+            if (prev && next && /\w/.test(prev) && /\w/.test(next)) continue;
         }
+
         if (stack.length && stack[stack.length - 1] === token) {
             stack.pop();
         } else {

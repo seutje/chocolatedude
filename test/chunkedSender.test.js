@@ -64,6 +64,18 @@ describe('createChunkSender', () => {
     expect(sent[1].startsWith('```')).toBe(true);
   });
 
+  test('formatting inside fences does not close markdown', async () => {
+    const sent = [];
+    const channel = { send: async (msg) => { sent.push(msg); } };
+    const send = createChunkSender(channel);
+    const text = 'a'.repeat(1947) + '```js\nconst a = *b*';
+    await send(text);
+    await send('```', true);
+    expect(sent.length).toBe(2);
+    expect(sent[0].endsWith('````')).toBe(true);
+    expect(sent[1].startsWith('```')).toBe(true);
+  });
+
   test('splits at newline without breaking words', async () => {
     const sent = [];
     const channel = { send: async (msg) => { sent.push(msg); } };
@@ -123,6 +135,17 @@ describe('computeUnclosed', () => {
 
   test('underscores inside words do not trigger italics', () => {
     const result = computeUnclosed('foo_bar');
+    expect(result).toEqual([]);
+  });
+
+  test('formatting inside code fences is ignored', () => {
+    const str = '```js\nconst x = *bold*\n```';
+    const result = computeUnclosed(str);
+    expect(result).toEqual([]);
+  });
+
+  test('inline code ignores formatting', () => {
+    const result = computeUnclosed('`*code*`');
     expect(result).toEqual([]);
   });
 });
