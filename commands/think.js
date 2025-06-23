@@ -1,5 +1,5 @@
 const streamOllama = require('../ollama');
-const lock = require('../commandLock');
+const queue = require('../commandLock');
 
 module.exports = async function (message) {
     const args = message.content.split(' ').slice(1);
@@ -9,19 +9,21 @@ module.exports = async function (message) {
         return message.channel.send('❌ Please provide a prompt for the think command.');
     }
 
-    if (!lock.acquire()) {
-        return message.channel.send('❌ Another request is already in progress. Please wait for it to finish.');
+    const label = `!think by ${message.author.username}`;
+    const ahead = queue.enqueue(label, async () => {
+        await message.channel.send('Let me think... (using qwen3:14b)');
+        try {
+            await streamOllama(message, { model: 'qwen3:14b', prompt, options: { think: true } });
+        } catch (error) {
+            console.error('Error during !think command:', error);
+            message.channel.send('❌ Failed to get a response from the Ollama API.');
+        }
+    });
+
+    if (ahead === false) {
+        return message.channel.send('❌ The waiting list is full. Please try again later.');
     }
-
-    // Let users know the bot is thinking before reaching out to the API
-    await message.channel.send('Let me think... (using qwen3:14b)');
-
-    try {
-        await streamOllama(message, { model: 'qwen3:14b', prompt, options: { think: true } });
-    } catch (error) {
-        console.error('Error during !think command:', error);
-        message.channel.send('❌ Failed to get a response from the Ollama API.');
-    } finally {
-        lock.release();
+    if (ahead > 0) {
+        message.channel.send(`⌛ Added to waiting list. There are ${ahead} request(s) ahead of you.`);
     }
 };
