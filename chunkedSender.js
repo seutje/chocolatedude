@@ -1,7 +1,8 @@
 function computeUnclosed(str) {
     const stack = [];
     // capture discord markdown tokens: *, **, ***, _, __, `, ```
-    const re = /(`{3,}|`|\*{1,3}|_{1,2})/g;
+    // ignore single asterisks used for list markers
+    const re = /(`{3,}|`|\*{1,3}(?!\s)|_{1,2})/g;
     let m;
     while ((m = re.exec(str)) !== null) {
         const token = m[0];

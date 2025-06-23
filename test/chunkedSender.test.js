@@ -74,4 +74,16 @@ describe('createChunkSender', () => {
     expect(sent[0].endsWith('\n')).toBe(true);
     expect(sent.join('')).toBe(text);
   });
+
+  test('list items are not mistaken for italics', async () => {
+    const sent = [];
+    const channel = { send: async (msg) => { sent.push(msg); } };
+    const send = createChunkSender(channel);
+    const text = 'a'.repeat(1948) + '\n* item';
+    await send(text);
+    await send('', true);
+    expect(sent.length).toBe(2);
+    expect(sent[1]).toBe('* item');
+    expect(sent.join('')).toBe(text);
+  });
 });
