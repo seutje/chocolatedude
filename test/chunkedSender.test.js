@@ -1,4 +1,5 @@
 const { createChunkSender } = require('../chunkedSender');
+const { computeUnclosed } = require('../chunkedSender');
 
 describe('createChunkSender', () => {
   test('splits long text into multiple messages', async () => {
@@ -85,5 +86,23 @@ describe('createChunkSender', () => {
     expect(sent.length).toBe(2);
     expect(sent[1]).toBe('* item');
     expect(sent.join('')).toBe(text);
+  });
+
+  test('breaks on previous newline when chunk ends mid sentence', async () => {
+    const sent = [];
+    const channel = { send: async (msg) => { sent.push(msg); } };
+    const send = createChunkSender(channel);
+    const text = 'First line.\nSecond line '.padEnd(1960, 'a') + 'end.';
+    await send(text);
+    await send('', true);
+    expect(sent[0].endsWith('\n')).toBe(true);
+    expect(sent.join('')).toBe(text);
+  });
+});
+
+describe('computeUnclosed', () => {
+  test('detects unclosed code fence', () => {
+    const result = computeUnclosed('```js');
+    expect(result).toEqual(['```']);
   });
 });

@@ -30,14 +30,22 @@ function createChunkSender(channel) {
                     splitPos += 1; // keep newline with the first chunk
                 } else {
                     splitPos = part.lastIndexOf(' ');
-                    if (splitPos <= 0) splitPos = CHUNK_SIZE;
+                    if (splitPos <= 0) {
+                        splitPos = CHUNK_SIZE;
+                    } else {
+                        const prev = part[splitPos - 1];
+                        if (!/[.!?]/.test(prev)) {
+                            const nl = part.lastIndexOf('\n');
+                            if (nl > 0) splitPos = nl + 1;
+                        }
+                    }
                 }
                 part = textBuffer.slice(0, splitPos);
             }
             const chunk = prefix + part;
             const unclosed = computeUnclosed(chunk);
             const closing = unclosed.slice().reverse().join('');
-            await channel.send((chunk + closing).trimStart());
+            await channel.send(chunk + closing);
             prefix = unclosed.join('');
             textBuffer = textBuffer.slice(part.length);
         }
