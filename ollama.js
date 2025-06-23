@@ -1,17 +1,4 @@
-function computeUnclosed(str) {
-    const stack = [];
-    const re = /(\*{1,3})/g; // handle only asterisks, ignore underscores
-    let m;
-    while ((m = re.exec(str)) !== null) {
-        const token = m[1];
-        if (stack.length && stack[stack.length - 1] === token) {
-            stack.pop();
-        } else {
-            stack.push(token);
-        }
-    }
-    return stack;
-}
+const { createChunkSender } = require('./chunkedSender');
 
 module.exports = async function streamOllamaResponse(message, { model, prompt, images = [], options } = {}) {
     const baseUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
@@ -35,25 +22,7 @@ module.exports = async function streamOllamaResponse(message, { model, prompt, i
     const decoder = new TextDecoder();
     const reader = response.body.getReader();
     let jsonBuffer = '';
-    let textBuffer = '';
-    let prefix = '';
-
-    async function flushChunks(force = false) {
-        while (textBuffer.length >= 1750 || (force && textBuffer.length)) {
-            let part = textBuffer.slice(0, 1750);
-            if (textBuffer.length > 1750) {
-                let splitPos = Math.max(part.lastIndexOf('\n'), part.lastIndexOf(' '));
-                if (splitPos <= 0) splitPos = 1750;
-                part = textBuffer.slice(0, splitPos);
-            }
-            const chunk = prefix + part;
-            const unclosed = computeUnclosed(chunk);
-            const closing = unclosed.slice().reverse().join('');
-            await message.channel.send((chunk + closing).trimStart());
-            prefix = unclosed.join('');
-            textBuffer = textBuffer.slice(part.length);
-        }
-    }
+    const sendChunk = createChunkSender(message.channel);
 
     while (true) {
         const { value, done } = await reader.read();
@@ -65,20 +34,19 @@ module.exports = async function streamOllamaResponse(message, { model, prompt, i
             if (!line.trim()) continue;
             const data = JSON.parse(line);
             if (data.done) {
-                await flushChunks(true);
+                await sendChunk('', true);
             } else if (data.response) {
-                textBuffer += data.response;
-                await flushChunks();
+                await sendChunk(data.response);
             }
         }
     }
     if (jsonBuffer.trim()) {
         const data = JSON.parse(jsonBuffer);
         if (data.response) {
-            textBuffer += data.response;
+            await sendChunk(data.response);
         }
     }
-    await flushChunks(true);
+    await sendChunk('', true);
 };
 
 module.exports.chat = async function streamOllamaChat(message, { model, messages, options } = {}) {
@@ -102,26 +70,8 @@ module.exports.chat = async function streamOllamaChat(message, { model, messages
     const decoder = new TextDecoder();
     const reader = response.body.getReader();
     let jsonBuffer = '';
-    let textBuffer = '';
-    let prefix = '';
     let fullText = '';
-
-    async function flushChunks(force = false) {
-        while (textBuffer.length >= 1750 || (force && textBuffer.length)) {
-            let part = textBuffer.slice(0, 1750);
-            if (textBuffer.length > 1750) {
-                let splitPos = Math.max(part.lastIndexOf('\n'), part.lastIndexOf(' '));
-                if (splitPos <= 0) splitPos = 1750;
-                part = textBuffer.slice(0, splitPos);
-            }
-            const chunk = prefix + part;
-            const unclosed = computeUnclosed(chunk);
-            const closing = unclosed.slice().reverse().join('');
-            await message.channel.send((chunk + closing).trimStart());
-            prefix = unclosed.join('');
-            textBuffer = textBuffer.slice(part.length);
-        }
-    }
+    const sendChunk = createChunkSender(message.channel);
 
     while (true) {
         const { value, done } = await reader.read();
@@ -133,21 +83,20 @@ module.exports.chat = async function streamOllamaChat(message, { model, messages
             if (!line.trim()) continue;
             const data = JSON.parse(line);
             if (data.done) {
-                await flushChunks(true);
+                await sendChunk('', true);
             } else if (data.message && data.message.content) {
-                textBuffer += data.message.content;
+                await sendChunk(data.message.content);
                 fullText += data.message.content;
-                await flushChunks();
             }
         }
     }
     if (jsonBuffer.trim()) {
         const data = JSON.parse(jsonBuffer);
         if (data.message && data.message.content) {
-            textBuffer += data.message.content;
+            await sendChunk(data.message.content);
             fullText += data.message.content;
         }
     }
-    await flushChunks(true);
+    await sendChunk('', true);
     return fullText;
 };
