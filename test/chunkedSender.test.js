@@ -44,7 +44,7 @@ describe('createChunkSender', () => {
     const sent = [];
     const channel = { send: async (msg) => { sent.push(msg); } };
     const send = createChunkSender(channel);
-    const text = 'a'.repeat(1949) + '_' + 'b';
+    const text = 'a'.repeat(1948) + '._' + 'b';
     await send(text);
     await send('', true);
     expect(sent.length).toBe(2);
@@ -101,6 +101,7 @@ describe('createChunkSender', () => {
     expect(sent.join('')).toBe(text);
   });
 
+
   test('breaks on previous newline when chunk ends mid sentence', async () => {
     const sent = [];
     const channel = { send: async (msg) => { sent.push(msg); } };
@@ -118,5 +119,10 @@ describe('computeUnclosed', () => {
   test('detects unclosed code fence', () => {
     const result = computeUnclosed('```js');
     expect(result).toEqual(['```']);
+  });
+
+  test('underscores inside words do not trigger italics', () => {
+    const result = computeUnclosed('foo_bar');
+    expect(result).toEqual([]);
   });
 });

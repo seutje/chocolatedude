@@ -6,6 +6,13 @@ function computeUnclosed(str) {
     let m;
     while ((m = re.exec(str)) !== null) {
         const token = m[0];
+        if (token.startsWith('_')) {
+            const prev = str[m.index - 1];
+            const next = str[m.index + token.length];
+            if (prev !== undefined && next !== undefined && /\w/.test(prev) && /\w/.test(next)) {
+                continue; // ignore foo_bar
+            }
+        }
         if (stack.length && stack[stack.length - 1] === token) {
             stack.pop();
         } else {
