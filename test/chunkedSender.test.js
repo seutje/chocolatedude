@@ -72,7 +72,8 @@ describe('createChunkSender', () => {
     await send(text);
     await send('', true);
     expect(sent.length).toBe(2);
-    expect(sent[0].endsWith('\n')).toBe(true);
+    expect(sent[0].endsWith('\n')).toBe(false);
+    expect(sent[1].startsWith('\n')).toBe(true);
     expect(sent.join('')).toBe(text);
   });
 
@@ -84,7 +85,19 @@ describe('createChunkSender', () => {
     await send(text);
     await send('', true);
     expect(sent.length).toBe(2);
-    expect(sent[1]).toBe('* item');
+    expect(sent[1]).toBe('\n* item');
+    expect(sent.join('')).toBe(text);
+  });
+
+  test('underscore list items are not italics', async () => {
+    const sent = [];
+    const channel = { send: async (msg) => { sent.push(msg); } };
+    const send = createChunkSender(channel);
+    const text = 'a'.repeat(1948) + '\n_ item';
+    await send(text);
+    await send('', true);
+    expect(sent.length).toBe(2);
+    expect(sent[1]).toBe('\n_ item');
     expect(sent.join('')).toBe(text);
   });
 
@@ -95,7 +108,8 @@ describe('createChunkSender', () => {
     const text = 'First line.\nSecond line '.padEnd(1960, 'a') + 'end.';
     await send(text);
     await send('', true);
-    expect(sent[0].endsWith('\n')).toBe(true);
+    expect(sent[0].endsWith('\n')).toBe(false);
+    expect(sent[1].startsWith('\n')).toBe(true);
     expect(sent.join('')).toBe(text);
   });
 });

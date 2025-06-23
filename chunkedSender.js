@@ -1,8 +1,8 @@
 function computeUnclosed(str) {
     const stack = [];
     // capture discord markdown tokens: *, **, ***, _, __, `, ```
-    // ignore single asterisks used for list markers
-    const re = /(`{3,}|`|\*{1,3}(?!\s)|_{1,2})/g;
+    // ignore list markers or underscores followed by whitespace
+    const re = /(`{3,}|`|\*{1,3}(?!\s)|_{1,2}(?!\s))/g;
     let m;
     while ((m = re.exec(str)) !== null) {
         const token = m[0];
@@ -27,7 +27,7 @@ function createChunkSender(channel) {
             if (textBuffer.length > CHUNK_SIZE) {
                 let splitPos = part.lastIndexOf('\n');
                 if (splitPos > 0) {
-                    splitPos += 1; // keep newline with the first chunk
+                    part = textBuffer.slice(0, splitPos); // omit trailing newline
                 } else {
                     splitPos = part.lastIndexOf(' ');
                     if (splitPos <= 0) {
@@ -36,11 +36,11 @@ function createChunkSender(channel) {
                         const prev = part[splitPos - 1];
                         if (!/[.!?]/.test(prev)) {
                             const nl = part.lastIndexOf('\n');
-                            if (nl > 0) splitPos = nl + 1;
+                            if (nl > 0) splitPos = nl;
                         }
                     }
+                    part = textBuffer.slice(0, splitPos);
                 }
-                part = textBuffer.slice(0, splitPos);
             }
             const chunk = prefix + part;
             const unclosed = computeUnclosed(chunk);
