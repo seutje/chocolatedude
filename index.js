@@ -31,6 +31,7 @@ const imageCommand = require('./commands/image');
 const chatCommand = require('./commands/chat');
 const musicCommand = require('./commands/music');
 const waitCommand = require('./commands/wait');
+const upscaleCommand = require('./commands/upscale');
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -70,6 +71,8 @@ client.on('messageCreate', async (message) => {
         await askCommand(message);
     } else if (message.content.startsWith('!image')) {
         await imageCommand(message);
+    } else if (message.content.startsWith('!upscale')) {
+        await upscaleCommand(message);
     } else if (message.content.startsWith('!music')) {
         await musicCommand(message);
     } else if (message.content.startsWith('!wait')) {

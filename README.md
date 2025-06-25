@@ -49,12 +49,13 @@ Text commands are prefixed with `!`:
 - `!chat <prompt>` – converse with the gemma3:12b-it-qat model via `/api/chat`. Previous prompts and responses are kept so the model has context. Attach images to include them with the prompt.
 - `!think <prompt>` – get a thoughtful response from the qwen3:14b model.
 - `!image[:seed] <prompt>` – generate an image using the API at `DIFFUSION_URL`. If a numeric seed is provided, it will be sent along with the prompt and the resulting seed will be shown with the image.
+- `!upscale` – upscale the first attached image using the API at `UPSCALE_URL`.
 - `!music[:length] <prompt> [--lyrics text]` – generate music using the API at `MUSIC_URL`. Specify a length in seconds like `!music:120` and optionally provide lyrics with `--lyrics`.
 - `!wait` – display the waiting list for AI requests.
 - `!help` – display a list of available commands.
 - `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip", "image").
 
-`!ask`, `!chat`, `!think`, `!image` and `!music` calls are processed sequentially using a waiting list of up to 50 requests. Use `!wait` to view the queue.
+`!ask`, `!chat`, `!think`, `!image`, `!upscale` and `!music` calls are processed sequentially using a waiting list of up to 50 requests. Use `!wait` to view the queue.
 
 ## Testing
 
