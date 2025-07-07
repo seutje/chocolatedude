@@ -15,6 +15,7 @@ module.exports = function (message) {
         '!image[:seed] <prompt> - generate an image using the API at DIFFUSION_URL. The resulting seed will be displayed with the image.',
         '!music[:length] <prompt> [--lyrics text] - generate music using the API at MUSIC_URL. Specify a length like !music:120 and optionally provide lyrics.',
         '!wait - show the waiting list for AI requests.',
+        '!game - get a link to a fun browser game.',
         '!listen - record a short voice message and execute the spoken command (e.g. play, skip, image).',
         '!help - show this message.'
     ].join('\n');

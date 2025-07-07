@@ -31,6 +31,7 @@ const imageCommand = require('./commands/image');
 const chatCommand = require('./commands/chat');
 const musicCommand = require('./commands/music');
 const waitCommand = require('./commands/wait');
+const gameCommand = require('./commands/game');
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -74,6 +75,8 @@ client.on('messageCreate', async (message) => {
         await musicCommand(message);
     } else if (message.content.startsWith('!wait')) {
         waitCommand(message);
+    } else if (message.content.startsWith('!game')) {
+        gameCommand(message);
     } else if (message.content.startsWith('!help')) {
         helpCommand(message);
     }
