@@ -51,6 +51,7 @@ Text commands are prefixed with `!`:
 - `!image[:seed] <prompt>` – generate an image using the API at `DIFFUSION_URL`. If a numeric seed is provided, it will be sent along with the prompt and the resulting seed will be shown with the image.
 - `!music[:length] <prompt> [--lyrics text]` – generate music using the API at `MUSIC_URL`. Specify a length in seconds like `!music:120` and optionally provide lyrics with `--lyrics`.
 - `!wait` – display the waiting list for AI requests.
+- `!game` – get a link to a fun browser game.
 - `!help` – display a list of available commands.
 - `!listen` – record a short voice message. The bot transcribes it with Whisper and executes the spoken command (e.g. "play", "skip", "image").
 
