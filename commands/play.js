@@ -250,7 +250,7 @@ module.exports = async function (message, serverQueue) {
         queueConstruct.songs.push(...songsToAdd);
         if (isPlaylist) {
             message.channel.send(`🎵 Added **${songsToAdd.length}** songs from the playlist to the queue!`);
-        } else {
+        } else if (queueConstruct.songs.length > 1) {
             message.channel.send(`🎵 **${songsToAdd[0].title}** (${songsToAdd[0].duration}) has been added to the queue!`);
         }
     }
