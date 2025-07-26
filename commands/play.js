@@ -104,7 +104,6 @@ module.exports = async function (message, serverQueue) {
                     message.channel.send(`⚠️ Playlist contains more than 100 videos. Only the first 100 will be added.`);
                 }
             } else {
-                message.channel.send('⏳ Fetching video info, please wait...');
                 const videoInfo = await ytdl.getInfo(query);
                 songsToAdd.push({
                     title: videoInfo.videoDetails.title,
@@ -113,7 +112,6 @@ module.exports = async function (message, serverQueue) {
                 });
             }
         } else {
-            message.channel.send('⏳ Searching for video, please wait...');
             const searchResults = await youtubeSearch.search(query);
             const video = searchResults.length ? searchResults[0] : null;
 
