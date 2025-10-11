@@ -254,19 +254,47 @@ module.exports = async function (message, serverQueue) {
             } else if (query.includes('list=')) {
                 isPlaylist = true;
                 message.channel.send('⏳ Fetching playlist, please wait...');
-                const playlist = await ytpl(query, { limit: 100 });
-                if (playlist.items.length === 0) {
-                    message.channel.send('❌ No videos found in this playlist, or the playlist is empty/private.');
-                    return;
+                let playlist;
+                try {
+                    playlist = await ytpl(query, { limit: 100 });
+                } catch (playlistError) {
+                    console.error('Playlist fetch failed, falling back to single video:', playlistError);
                 }
-                songsToAdd = playlist.items.map(item => ({
-                    title: item.title,
-                    url: item.url,
-                    duration: formatDuration(parseDurationString(item.duration))
-                }));
-                if (songsToAdd.length > 100) {
-                    songsToAdd = songsToAdd.slice(0, 100);
-                    message.channel.send(`⚠️ Playlist contains more than 100 videos. Only the first 100 will be added.`);
+
+                if (playlist && playlist.items.length > 0) {
+                    songsToAdd = playlist.items.map(item => ({
+                        title: item.title,
+                        url: item.url,
+                        duration: formatDuration(parseDurationString(item.duration))
+                    }));
+                    if (songsToAdd.length > 100) {
+                        songsToAdd = songsToAdd.slice(0, 100);
+                        message.channel.send(`⚠️ Playlist contains more than 100 videos. Only the first 100 will be added.`);
+                    }
+                } else {
+                    let fallbackUrl = query;
+                    try {
+                        const urlObj = new URL(query);
+                        urlObj.searchParams.delete('list');
+                        urlObj.searchParams.delete('index');
+                        urlObj.searchParams.delete('start_radio');
+                        fallbackUrl = urlObj.toString();
+                    } catch (err) {
+                        console.error('Failed to parse playlist URL for fallback:', err);
+                    }
+
+                    try {
+                        const metadata = await runYtDlp(fallbackUrl);
+                        songsToAdd.push({
+                            title: metadata.title || fallbackUrl,
+                            url: metadata.webpage_url || fallbackUrl,
+                            duration: formatDuration(metadata.duration)
+                        });
+                        isPlaylist = false;
+                        message.channel.send('⚠️ Playlist could not be loaded. Falling back to the linked video.').catch(() => {});
+                    } catch (err) {
+                        throw err;
+                    }
                 }
             } else {
                 const metadata = await runYtDlp(query);
