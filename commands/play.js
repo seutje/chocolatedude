@@ -115,15 +115,89 @@ async function fetchSunoSong(url) {
     }
 
     const html = await response.text();
-    const match = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    const decodeEntities = text => text.replace(/&(#\d+|#x[\da-fA-F]+|quot|apos|amp|lt|gt);/g, entity => {
+        if (entity === '&quot;') return '"';
+        if (entity === '&apos;') return '\'';
+        if (entity === '&amp;') return '&';
+        if (entity === '&lt;') return '<';
+        if (entity === '&gt;') return '>';
+        if (entity.startsWith('&#x')) {
+            return String.fromCodePoint(parseInt(entity.slice(3, -1), 16));
+        }
+        if (entity.startsWith('&#')) {
+            return String.fromCodePoint(parseInt(entity.slice(2, -1), 10));
+        }
+        return entity;
+    });
 
-    if (!match) {
+    const extractNextData = () => {
+        const scriptMatch = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+        if (scriptMatch) {
+            return scriptMatch[1];
+        }
+
+        const windowMatch = html.match(/window\.__NEXT_DATA__\s*=\s*([\s\S]*?)<\/script>/i);
+        if (windowMatch) {
+            let snippet = windowMatch[1].trim();
+            if (snippet.endsWith(';')) {
+                snippet = snippet.slice(0, -1).trim();
+            }
+            if (snippet.startsWith('JSON.parse(')) {
+                snippet = snippet.slice('JSON.parse('.length).trim();
+                if (snippet.endsWith(')')) {
+                    snippet = snippet.slice(0, -1).trim();
+                }
+            }
+            return snippet;
+        }
+
+        return null;
+    };
+
+    let rawJson = extractNextData();
+
+    if (!rawJson) {
         throw new Error('Unable to locate Suno song metadata.');
     }
 
+    rawJson = decodeEntities(rawJson.trim());
+    if (!rawJson) {
+        throw new Error('Unable to locate Suno song metadata.');
+    }
+
+    if (rawJson.startsWith('JSON.parse(')) {
+        rawJson = rawJson.slice('JSON.parse('.length).trim();
+        if (rawJson.endsWith(')')) {
+            rawJson = rawJson.slice(0, -1).trim();
+        }
+    }
+
+    const unwrapStringLiteral = value => {
+        if (value.length < 2) return value;
+        const firstChar = value[0];
+        const lastChar = value[value.length - 1];
+        if ((firstChar === '"' && lastChar === '"') || (firstChar === '\'' && lastChar === '\'') || (firstChar === '`' && lastChar === '`')) {
+            const inner = value.slice(1, -1);
+            if (firstChar === '"') {
+                try {
+                    return JSON.parse(value);
+                } catch (err) {
+                    return inner.replace(/\\"/g, '"');
+                }
+            }
+            if (firstChar === '\'') {
+                return inner.replace(/\\'/g, '\'').replace(/\\"/g, '"');
+            }
+            return inner.replace(/\\`/g, '`');
+        }
+        return value;
+    };
+
+    rawJson = unwrapStringLiteral(rawJson.trim());
+
     let parsedJson;
     try {
-        parsedJson = JSON.parse(match[1]);
+        parsedJson = JSON.parse(rawJson);
     } catch (err) {
         throw new Error(`Unable to parse Suno metadata JSON: ${err.message}`);
     }

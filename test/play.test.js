@@ -47,6 +47,28 @@ describe('play command Suno integration', () => {
         jest.clearAllMocks();
     });
 
+    const createBaseMessage = () => ({
+        content: '!play https://suno.com/s/test',
+        channel: { send: jest.fn().mockResolvedValue(null) },
+        member: {
+            voice: {
+                channel: { id: 'voice-channel-id' }
+            }
+        },
+        guild: {
+            id: 'guild-id',
+            voiceAdapterCreator: jest.fn()
+        }
+    });
+
+    const runPlayCommand = async () => {
+        const message = createBaseMessage();
+        const serverQueue = new Map();
+        await playCommand(message, serverQueue);
+        await new Promise(resolve => setImmediate(resolve));
+        return { message, serverQueue };
+    };
+
     test('enqueues Suno share link with resolved stream URL', async () => {
         const html = `<html><head><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
             props: {
@@ -71,25 +93,7 @@ describe('play command Suno integration', () => {
             return stream;
         });
 
-        const message = {
-            content: '!play https://suno.com/s/test',
-            channel: { send: jest.fn().mockResolvedValue(null) },
-            member: {
-                voice: {
-                    channel: { id: 'voice-channel-id' }
-                }
-            },
-            guild: {
-                id: 'guild-id',
-                voiceAdapterCreator: jest.fn()
-            }
-        };
-
-        const serverQueue = new Map();
-
-        await playCommand(message, serverQueue);
-
-        await new Promise(resolve => setImmediate(resolve));
+        const { serverQueue } = await runPlayCommand();
 
         expect(global.fetch).toHaveBeenCalledWith('https://suno.com/s/test', expect.any(Object));
         expect(voice.joinVoiceChannel).toHaveBeenCalledWith(expect.objectContaining({ channelId: 'voice-channel-id', guildId: 'guild-id' }));
@@ -103,6 +107,44 @@ describe('play command Suno integration', () => {
 
         expect(openStreamSpy).toHaveBeenCalledWith('https://cdn.suno.com/audio/test.mp3');
         expect(queue.player.play).toHaveBeenCalled();
+
+        openStreamSpy.mockRestore();
+    });
+
+    test('parses Suno metadata when JSON is HTML-escaped and assigned to window.__NEXT_DATA__', async () => {
+        const payload = {
+            props: {
+                pageProps: {
+                    shareSong: {
+                        title: 'Escaped Song & more',
+                        duration_seconds: '215',
+                        audio_url: 'https://cdn.suno.com/audio/escaped.mp3'
+                    }
+                }
+            }
+        };
+
+        const escapedJson = JSON.stringify(payload).replace(/"/g, '&quot;');
+        const html = `<html><head><script>window.__NEXT_DATA__ = ${escapedJson};</script></head><body></body></html>`;
+
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            text: async () => html
+        });
+
+        const openStreamSpy = jest.spyOn(playCommand.helpers, 'openStreamFromUrl').mockImplementation(async () => {
+            const stream = new PassThrough();
+            stream.end();
+            return stream;
+        });
+
+        const { serverQueue } = await runPlayCommand();
+
+        const queue = serverQueue.get('guild-id');
+        expect(queue).toBeDefined();
+        expect(queue.songs[0].streamUrl).toBe('https://cdn.suno.com/audio/escaped.mp3');
+        expect(queue.songs[0].title).toBe('Escaped Song & more');
+        expect(queue.songs[0].duration).toBe('03:35');
 
         openStreamSpy.mockRestore();
     });
