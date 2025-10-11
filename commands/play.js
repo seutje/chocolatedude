@@ -1,6 +1,12 @@
+const { fetch: undiciFetch } = require('undici');
+
+if (typeof global.fetch !== 'function') {
+    global.fetch = undiciFetch;
+}
+
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, demuxProbe, VoiceConnectionStatus } = require('@discordjs/voice');
 const ytpl = require('ytpl');
-const { getTracks } = require('spotify-url-info')(fetch);
+const { getTracks } = require('spotify-url-info')(global.fetch);
 const formatDuration = require('../formatDuration');
 const { spawn } = require('child_process');
 const http = require('http');
