@@ -186,4 +186,37 @@ describe('play command Suno integration', () => {
 
         openStreamSpy.mockRestore();
     });
+
+    test('falls back to scanning document when __NEXT_DATA__ payload is absent', async () => {
+        const escapedPayload = JSON.stringify({
+            song: {
+                title: 'Fallback Song',
+                audio_length_seconds: 301,
+                audio_url: 'https://cdn.suno.com/audio/fallback.mp3'
+            }
+        }).replace(/"/g, '\\"');
+
+        const html = `<!DOCTYPE html><html><head><meta property="og:title" content="Fallback Song"></head><body><script>self.__next_f = self.__next_f || [];self.__next_f.push([1,"/s/[id]","${escapedPayload}"]);</script></body></html>`;
+
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            text: async () => html
+        });
+
+        const openStreamSpy = jest.spyOn(playCommand.helpers, 'openStreamFromUrl').mockImplementation(async () => {
+            const stream = new PassThrough();
+            stream.end();
+            return stream;
+        });
+
+        const { serverQueue } = await runPlayCommand();
+
+        const queue = serverQueue.get('guild-id');
+        expect(queue).toBeDefined();
+        expect(queue.songs[0].streamUrl).toBe('https://cdn.suno.com/audio/fallback.mp3');
+        expect(queue.songs[0].title).toBe('Fallback Song');
+        expect(queue.songs[0].duration).toBe('05:01');
+
+        openStreamSpy.mockRestore();
+    });
 });

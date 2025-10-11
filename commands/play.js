@@ -293,16 +293,15 @@ async function fetchSunoSong(url) {
         return null;
     };
 
-    let rawJson = extractNextData();
-
-    if (!rawJson) {
-        throw new Error('Unable to locate Suno song metadata.');
-    }
-
-    rawJson = decodeEntities(rawJson.trim());
-    if (!rawJson) {
-        throw new Error('Unable to locate Suno song metadata.');
-    }
+    const decodeAndUnescape = raw => {
+        if (typeof raw !== 'string') return raw;
+        const entityDecoded = decodeEntities(raw);
+        try {
+            return JSON.parse(`"${entityDecoded.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+        } catch (error) {
+            return entityDecoded;
+        }
+    };
 
     const unwrapStringLiteral = value => {
         if (value.length < 2) return value;
@@ -398,37 +397,80 @@ async function fetchSunoSong(url) {
         return current.trim();
     };
 
-    rawJson = unwrapExpression(rawJson);
-    rawJson = unwrapStringLiteral(rawJson.trim());
+    const extractFromDocumentFallback = () => {
+        const sanitized = html.replace(/<script[^>]*>\s*?\/\*[\s\S]*?\*\/\s*?<\/script>/gi, '');
+        const searchSources = [sanitized, sanitized.replace(/\\+["']/g, match => match.slice(-1))];
 
-    let parsedJson;
-    try {
-        parsedJson = JSON.parse(rawJson);
-    } catch (err) {
-        const fallback = html.replace(/<script[^>]*>\s*?\/\*[\s\S]*?\*\/\s*?<\/script>/gi, '');
-        const audioMatch = fallback.match(/"audio_url"\s*:\s*"([^"]+)"/i);
-        if (!audioMatch) {
-            throw new Error(`Unable to parse Suno metadata JSON: ${err.message}`);
+        const audioRegexes = [
+            /["']audio[_-]?url["']\s*:\s*["']([^"']+)["']/i,
+            /<meta[^>]+property=["']og:audio(?::url)?["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+            /<audio[^>]+src=["']([^"']+)["'][^>]*>/i
+        ];
+
+        let audioMatch = null;
+        let titleMatch = null;
+        let durationMatch = null;
+
+        for (const source of searchSources) {
+            for (const regex of audioRegexes) {
+                const match = source.match(regex);
+                if (match) {
+                    audioMatch = match;
+                    break;
+                }
+            }
+            if (audioMatch) {
+                titleMatch = source.match(/["']title["']\s*:\s*["']([^"']+)["']/i);
+                durationMatch = source.match(/["'](?:audio_length_seconds|duration_seconds|duration)["']\s*:\s*["']?([\d.]+)["']?/i);
+                break;
+            }
         }
 
-        const safeJsonParse = value => {
-            try {
-                return JSON.parse(`"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
-            } catch (error) {
-                return value;
-            }
-        };
+        if (!audioMatch) {
+            return null;
+        }
 
-        const decodeAndUnescape = raw => safeJsonParse(decodeEntities(raw));
+        const metaTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["'][^>]*>/i);
 
-        const titleMatch = fallback.match(/"title"\s*:\s*"([^"]+)"/i);
-        const durationMatch = fallback.match(/"(?:audio_length_seconds|duration_seconds|duration)"\s*:\s*"?([\d.]+)"?/i);
-
-        parsedJson = {
-            title: titleMatch ? decodeAndUnescape(titleMatch[1]) : undefined,
+        return {
+            title: titleMatch ? decodeAndUnescape(titleMatch[1]) : metaTitleMatch ? decodeAndUnescape(metaTitleMatch[1]) : undefined,
             audio_url: decodeAndUnescape(audioMatch[1]),
             audio_length_seconds: durationMatch ? Number(durationMatch[1]) : undefined
         };
+    };
+
+    let rawJson = extractNextData();
+    let parsedJson;
+
+    if (rawJson) {
+        rawJson = decodeEntities(rawJson.trim());
+        if (!rawJson) {
+            rawJson = null;
+        }
+    }
+
+    if (rawJson) {
+        rawJson = unwrapExpression(rawJson);
+        rawJson = unwrapStringLiteral(rawJson.trim());
+
+        try {
+            parsedJson = JSON.parse(rawJson);
+        } catch (err) {
+            const fallbackData = extractFromDocumentFallback();
+            if (!fallbackData) {
+                throw new Error(`Unable to parse Suno metadata JSON: ${err.message}`);
+            }
+            parsedJson = fallbackData;
+        }
+    } else {
+        const fallbackData = extractFromDocumentFallback();
+        if (fallbackData) {
+            parsedJson = fallbackData;
+        }
+    }
+
+    if (!parsedJson) {
+        throw new Error('Unable to locate Suno song metadata.');
     }
 
     const findSongData = value => {
