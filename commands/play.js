@@ -94,7 +94,85 @@ function destroyConnection(connection) {
     }
 }
 
-async function openStreamFromUrl(streamUrl) {
+const helpers = {};
+
+async function fetchSunoSong(url) {
+    const response = await fetch(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch Suno share page: HTTP ${response.status}`);
+    }
+
+    const html = await response.text();
+    const match = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+
+    if (!match) {
+        throw new Error('Unable to locate Suno song metadata.');
+    }
+
+    let parsedJson;
+    try {
+        parsedJson = JSON.parse(match[1]);
+    } catch (err) {
+        throw new Error(`Unable to parse Suno metadata JSON: ${err.message}`);
+    }
+
+    const findSongData = value => {
+        if (!value || typeof value !== 'object') return null;
+
+        if ('audio_url' in value || 'audioUrl' in value) {
+            return value;
+        }
+
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                const found = findSongData(item);
+                if (found) return found;
+            }
+        } else {
+            for (const key of Object.keys(value)) {
+                const found = findSongData(value[key]);
+                if (found) return found;
+            }
+        }
+
+        return null;
+    };
+
+    const songData = findSongData(parsedJson);
+
+    if (!songData) {
+        throw new Error('Unable to extract Suno song information from metadata.');
+    }
+
+    const audioUrl = songData.audio_url || songData.audioUrl;
+    if (!audioUrl) {
+        throw new Error('Suno song metadata does not include an audio URL.');
+    }
+
+    let rawDuration = songData.audio_length_seconds ?? songData.duration_seconds ?? songData.duration ?? null;
+    if (typeof rawDuration === 'string') {
+        const parsed = Number(rawDuration);
+        rawDuration = Number.isFinite(parsed) ? parsed : null;
+    }
+
+    const durationSeconds = typeof rawDuration === 'number' && Number.isFinite(rawDuration) ? rawDuration : null;
+
+    const title = songData.title || songData.name || songData.display_name || 'Unknown Title';
+
+    return {
+        title,
+        durationSeconds,
+        audioUrl
+    };
+}
+
+helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl) {
     return new Promise((resolve, reject) => {
         let parsedUrl;
         try {
@@ -123,20 +201,32 @@ async function openStreamFromUrl(streamUrl) {
 
         request.once('error', reject);
     });
-}
+};
 
-async function createAudioResourceFromYoutube(url) {
-    const data = await runYtDlp(url);
-    if (!data.stream_url) {
-        throw new Error('No stream URL retrieved from yt-dlp');
+helpers.createAudioResourceForSong = async function createAudioResourceForSong(song) {
+    let metadata = {};
+    let stream;
+
+    if (song.streamUrl) {
+        stream = await helpers.openStreamFromUrl(song.streamUrl);
+        metadata = {
+            title: song.title,
+            duration: song.durationSeconds ?? null,
+            stream_url: song.streamUrl
+        };
+    } else {
+        metadata = await runYtDlp(song.url);
+        if (!metadata.stream_url) {
+            throw new Error('No stream URL retrieved from yt-dlp');
+        }
+        stream = await helpers.openStreamFromUrl(metadata.stream_url);
     }
 
-    const stream = await openStreamFromUrl(data.stream_url);
     const probe = await demuxProbe(stream);
     const resource = createAudioResource(probe.stream, { inputType: probe.type, inlineVolume: true });
 
-    return { resource, metadata: data };
-}
+    return { resource, metadata };
+};
 
 let youtubeSearchModulePromise;
 async function searchYouTube(query) {
@@ -147,7 +237,7 @@ async function searchYouTube(query) {
     return mod.search(query);
 }
 
-async function playSong(guild, song, serverQueue) {
+helpers.playSong = async function playSong(guild, song, serverQueue) {
     const queueConstruct = serverQueue.get(guild.id);
     if (!queueConstruct) return;
 
@@ -158,7 +248,7 @@ async function playSong(guild, song, serverQueue) {
     }
 
     try {
-        const { resource, metadata } = await createAudioResourceFromYoutube(song.url);
+        const { resource, metadata } = await helpers.createAudioResourceForSong(song);
 
         if (!song.title && metadata.title) {
             song.title = metadata.title;
@@ -177,14 +267,14 @@ async function playSong(guild, song, serverQueue) {
 
         queueConstruct.songs.shift();
         if (queueConstruct.songs.length > 0) {
-            await playSong(guild, queueConstruct.songs[0], serverQueue);
+            await helpers.playSong(guild, queueConstruct.songs[0], serverQueue);
         } else {
             destroyConnection(queueConstruct.connection);
             serverQueue.delete(guild.id);
             queueConstruct.textChannel.send('⏹️ Queue finished. Leaving voice channel.').catch(() => {});
         }
     }
-}
+};
 
 module.exports = async function (message, serverQueue) {
     const args = message.content.split(' ').slice(1);
@@ -296,6 +386,15 @@ module.exports = async function (message, serverQueue) {
                         throw err;
                     }
                 }
+            } else if (/https?:\/\/(?:www\.)?suno\.com\/s\//i.test(query)) {
+                const sunoMetadata = await fetchSunoSong(query);
+                songsToAdd.push({
+                    title: sunoMetadata.title || query,
+                    url: query,
+                    duration: formatDuration(sunoMetadata.durationSeconds),
+                    streamUrl: sunoMetadata.audioUrl,
+                    durationSeconds: sunoMetadata.durationSeconds ?? undefined
+                });
             } else {
                 const metadata = await runYtDlp(query);
                 songsToAdd.push({
@@ -360,17 +459,17 @@ module.exports = async function (message, serverQueue) {
             player.on(AudioPlayerStatus.Idle, () => {
                 (async () => {
                     if (queueConstruct.loop === 'single' && queueConstruct.songs.length > 0) {
-                        await playSong(message.guild, queueConstruct.songs[0], serverQueue);
+                        await helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue);
                         message.channel.send(`🔁 Looping **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`).catch(() => {});
                     } else if (queueConstruct.loop === 'all' && queueConstruct.songs.length > 0) {
                         const finishedSong = queueConstruct.songs.shift();
                         queueConstruct.songs.push(finishedSong);
-                        await playSong(message.guild, queueConstruct.songs[0], serverQueue);
+                        await helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue);
                         message.channel.send(`🔁 Looping entire queue. Now playing: **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`).catch(() => {});
                     } else {
                         queueConstruct.songs.shift();
                         if (queueConstruct.songs.length > 0) {
-                            await playSong(message.guild, queueConstruct.songs[0], serverQueue);
+                            await helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue);
                         } else {
                             destroyConnection(queueConstruct.connection);
                             serverQueue.delete(message.guild.id);
@@ -387,7 +486,7 @@ module.exports = async function (message, serverQueue) {
                 message.channel.send('❌ Error: Could not play the audio. Skipping to next song if available.').catch(() => {});
                 queueConstruct.songs.shift();
                 if (queueConstruct.songs.length > 0) {
-                    playSong(message.guild, queueConstruct.songs[0], serverQueue).catch(err => console.error('Playback retry failed:', err));
+                    helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue).catch(err => console.error('Playback retry failed:', err));
                 } else {
                     destroyConnection(queueConstruct.connection);
                     serverQueue.delete(message.guild.id);
@@ -395,7 +494,7 @@ module.exports = async function (message, serverQueue) {
                 }
             });
 
-            playSong(message.guild, queueConstruct.songs[0], serverQueue).catch(err => {
+            helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue).catch(err => {
                 console.error('Initial playback failed:', err);
             });
             if (isPlaylist && remainingSpotifyTracks.length > 0) {
@@ -452,3 +551,7 @@ module.exports = async function (message, serverQueue) {
         }
     }
 };
+
+module.exports.fetchSunoSong = fetchSunoSong;
+module.exports.helpers = helpers;
+module.exports.runYtDlp = runYtDlp;
