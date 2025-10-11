@@ -130,25 +130,164 @@ async function fetchSunoSong(url) {
         return entity;
     });
 
+    const extractBalancedSegment = (text, openChar, closeChar) => {
+        if (!text || text[0] !== openChar) return null;
+
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let index = 0; index < text.length; index++) {
+            const char = text[index];
+
+            if (inString) {
+                if (char === '\\') {
+                    index += 1;
+                    continue;
+                }
+                if (char === stringChar) {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (char === '"' || char === '\'' || char === '`') {
+                inString = true;
+                stringChar = char;
+                continue;
+            }
+
+            if (char === openChar) {
+                depth += 1;
+            } else if (char === closeChar) {
+                depth -= 1;
+                if (depth === 0) {
+                    const content = text.slice(1, index);
+                    const rest = text.slice(index + 1);
+                    return { content, rest, endIndex: index };
+                }
+            }
+        }
+
+        return null;
+    };
+
+    const readJsExpression = (source, startIndex) => {
+        const length = source.length;
+        let index = startIndex;
+
+        while (index < length && /\s/.test(source[index])) {
+            index += 1;
+        }
+
+        if (index >= length) return null;
+
+        const startChar = source[index];
+        const start = index;
+
+        if (startChar === '{' || startChar === '[') {
+            const closing = extractBalancedSegment(source.slice(index), startChar, startChar === '{' ? '}' : ']');
+            if (closing) {
+                const consumedLength = closing.endIndex + 1;
+                return source.slice(start, start + consumedLength);
+            }
+        }
+
+        if (startChar === '"' || startChar === '\'' || startChar === '`') {
+            let inEscape = false;
+            for (let i = index + 1; i < length; i++) {
+                const char = source[i];
+                if (inEscape) {
+                    inEscape = false;
+                    continue;
+                }
+                if (char === '\\') {
+                    inEscape = true;
+                    continue;
+                }
+                if (char === startChar) {
+                    return source.slice(start, i + 1);
+                }
+            }
+            return null;
+        }
+
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let i = index; i < length; i++) {
+            const char = source[i];
+
+            if (inString) {
+                if (char === '\\') {
+                    i += 1;
+                    continue;
+                }
+                if (char === stringChar) {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (char === '"' || char === '\'' || char === '`') {
+                inString = true;
+                stringChar = char;
+                continue;
+            }
+
+            if (char === '(') {
+                depth += 1;
+                continue;
+            }
+
+            if (char === ')') {
+                if (depth > 0) {
+                    depth -= 1;
+                    continue;
+                }
+            }
+
+            if (char === ';' && depth === 0) {
+                return source.slice(start, i);
+            }
+
+            if (char === '<' && source.slice(i, i + 8).toLowerCase() === '</script') {
+                return source.slice(start, i);
+            }
+        }
+
+        return source.slice(start);
+    };
+
+    const extractAssignmentValue = () => {
+        const assignmentPatterns = [
+            /(?:window\.|globalThis\.|self\.)?__NEXT_DATA__\s*=\s*/i,
+            /(?:window|globalThis|self)?\["__NEXT_DATA__"\]\s*=\s*/i
+        ];
+
+        for (const pattern of assignmentPatterns) {
+            const match = pattern.exec(html);
+            if (!match) continue;
+
+            const expression = readJsExpression(html, match.index + match[0].length);
+            if (expression) {
+                return expression;
+            }
+        }
+
+        return null;
+    };
+
     const extractNextData = () => {
         const scriptMatch = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
         if (scriptMatch) {
             return scriptMatch[1];
         }
 
-        const windowMatch = html.match(/window\.__NEXT_DATA__\s*=\s*([\s\S]*?)<\/script>/i);
-        if (windowMatch) {
-            let snippet = windowMatch[1].trim();
-            if (snippet.endsWith(';')) {
-                snippet = snippet.slice(0, -1).trim();
-            }
-            if (snippet.startsWith('JSON.parse(')) {
-                snippet = snippet.slice('JSON.parse('.length).trim();
-                if (snippet.endsWith(')')) {
-                    snippet = snippet.slice(0, -1).trim();
-                }
-            }
-            return snippet;
+        const assignmentValue = extractAssignmentValue();
+        if (assignmentValue) {
+            return assignmentValue;
         }
 
         return null;
@@ -163,13 +302,6 @@ async function fetchSunoSong(url) {
     rawJson = decodeEntities(rawJson.trim());
     if (!rawJson) {
         throw new Error('Unable to locate Suno song metadata.');
-    }
-
-    if (rawJson.startsWith('JSON.parse(')) {
-        rawJson = rawJson.slice('JSON.parse('.length).trim();
-        if (rawJson.endsWith(')')) {
-            rawJson = rawJson.slice(0, -1).trim();
-        }
     }
 
     const unwrapStringLiteral = value => {
@@ -193,13 +325,110 @@ async function fetchSunoSong(url) {
         return value;
     };
 
+    const stripTrailingSemicolons = text => text.replace(/;\s*$/g, '').trim();
+
+    const tryUnwrapFunction = (expression, names, transform) => {
+        const trimmed = expression.trim();
+        const candidates = [];
+        for (const name of names) {
+            candidates.push(name);
+            candidates.push(`window.${name}`);
+            candidates.push(`globalThis.${name}`);
+            candidates.push(`self.${name}`);
+        }
+
+        for (const candidate of candidates) {
+            if (!trimmed.startsWith(`${candidate}(`)) continue;
+
+            const segment = extractBalancedSegment(trimmed.slice(candidate.length), '(', ')');
+            if (!segment) continue;
+
+            const inner = segment.content.trim();
+            let transformed = transform(inner);
+            if (transformed == null) {
+                transformed = inner;
+            }
+            return transformed;
+        }
+
+        return null;
+    };
+
+    const unwrapExpression = initial => {
+        let current = stripTrailingSemicolons(initial);
+        let iterations = 0;
+
+        while (iterations < 10) {
+            iterations += 1;
+            const withoutJsonParse = tryUnwrapFunction(current, ['JSON.parse'], inner => inner);
+            if (withoutJsonParse) {
+                current = withoutJsonParse;
+                continue;
+            }
+
+            const withoutDecode = tryUnwrapFunction(current, ['decodeURIComponent', 'decodeURI'], inner => {
+                const literal = unwrapStringLiteral(inner.trim());
+                try {
+                    return decodeURIComponent(literal);
+                } catch (err) {
+                    return literal;
+                }
+            });
+            if (withoutDecode) {
+                current = withoutDecode;
+                continue;
+            }
+
+            const withoutAtob = tryUnwrapFunction(current, ['atob'], inner => {
+                const literal = unwrapStringLiteral(inner.trim());
+                try {
+                    return Buffer.from(literal, 'base64').toString('utf8');
+                } catch (err) {
+                    return literal;
+                }
+            });
+            if (withoutAtob) {
+                current = withoutAtob;
+                continue;
+            }
+
+            break;
+        }
+
+        return current.trim();
+    };
+
+    rawJson = unwrapExpression(rawJson);
     rawJson = unwrapStringLiteral(rawJson.trim());
 
     let parsedJson;
     try {
         parsedJson = JSON.parse(rawJson);
     } catch (err) {
-        throw new Error(`Unable to parse Suno metadata JSON: ${err.message}`);
+        const fallback = html.replace(/<script[^>]*>\s*?\/\*[\s\S]*?\*\/\s*?<\/script>/gi, '');
+        const audioMatch = fallback.match(/"audio_url"\s*:\s*"([^"]+)"/i);
+        if (!audioMatch) {
+            throw new Error(`Unable to parse Suno metadata JSON: ${err.message}`);
+        }
+
+        const safeJsonParse = value => {
+            try {
+                return JSON.parse(`"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+            } catch (error) {
+                return value;
+            }
+        };
+
+        const decodeAndUnescape = raw => safeJsonParse(decodeEntities(raw));
+
+        const titleMatch = fallback.match(/"title"\s*:\s*"([^"]+)"/i);
+        const durationMatch = fallback.match(/"(?:audio_length_seconds|duration_seconds|duration)"\s*:\s*"?([\d.]+)"?/i);
+
+        parsedJson = {
+            title: titleMatch ? decodeAndUnescape(titleMatch[1]) : undefined,
+            audio_url: decodeAndUnescape(audioMatch[1]),
+            audio_length_seconds: durationMatch ? Number(durationMatch[1]) : undefined
+        };
     }
 
     const findSongData = value => {

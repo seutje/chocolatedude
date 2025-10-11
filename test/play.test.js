@@ -148,4 +148,42 @@ describe('play command Suno integration', () => {
 
         openStreamSpy.mockRestore();
     });
+
+    test('parses Suno metadata when wrapped in JSON.parse(decodeURIComponent()) with trailing script content', async () => {
+        const payload = {
+            props: {
+                pageProps: {
+                    shareSong: {
+                        title: 'Percent Encoded Song',
+                        duration: 142,
+                        audio_url: 'https://cdn.suno.com/audio/percent.mp3'
+                    }
+                }
+            }
+        };
+
+        const encoded = encodeURIComponent(JSON.stringify(payload));
+        const html = `<html><head><script>window.__NEXT_DATA__ = JSON.parse(decodeURIComponent('${encoded}'));window.__NEXT_P = [];</script></head><body></body></html>`;
+
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            text: async () => html
+        });
+
+        const openStreamSpy = jest.spyOn(playCommand.helpers, 'openStreamFromUrl').mockImplementation(async () => {
+            const stream = new PassThrough();
+            stream.end();
+            return stream;
+        });
+
+        const { serverQueue } = await runPlayCommand();
+
+        const queue = serverQueue.get('guild-id');
+        expect(queue).toBeDefined();
+        expect(queue.songs[0].streamUrl).toBe('https://cdn.suno.com/audio/percent.mp3');
+        expect(queue.songs[0].title).toBe('Percent Encoded Song');
+        expect(queue.songs[0].duration).toBe('02:22');
+
+        openStreamSpy.mockRestore();
+    });
 });
