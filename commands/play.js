@@ -1,6 +1,12 @@
+const { fetch: undiciFetch } = require('undici');
+
+if (typeof global.fetch !== 'function') {
+    global.fetch = undiciFetch;
+}
+
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, demuxProbe, VoiceConnectionStatus } = require('@discordjs/voice');
 const ytpl = require('ytpl');
-const { getTracks } = require('spotify-url-info')(fetch);
+const { getTracks } = require('spotify-url-info')(global.fetch);
 const formatDuration = require('../formatDuration');
 const { spawn } = require('child_process');
 const http = require('http');
@@ -94,7 +100,430 @@ function destroyConnection(connection) {
     }
 }
 
-async function openStreamFromUrl(streamUrl) {
+const helpers = {};
+
+async function fetchSunoSong(url) {
+    const response = await fetch(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch Suno share page: HTTP ${response.status}`);
+    }
+
+    const html = await response.text();
+    const decodeEntities = text => text.replace(/&(#\d+|#x[\da-fA-F]+|quot|apos|amp|lt|gt);/g, entity => {
+        if (entity === '&quot;') return '"';
+        if (entity === '&apos;') return '\'';
+        if (entity === '&amp;') return '&';
+        if (entity === '&lt;') return '<';
+        if (entity === '&gt;') return '>';
+        if (entity.startsWith('&#x')) {
+            return String.fromCodePoint(parseInt(entity.slice(3, -1), 16));
+        }
+        if (entity.startsWith('&#')) {
+            return String.fromCodePoint(parseInt(entity.slice(2, -1), 10));
+        }
+        return entity;
+    });
+
+    const extractBalancedSegment = (text, openChar, closeChar) => {
+        if (!text || text[0] !== openChar) return null;
+
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let index = 0; index < text.length; index++) {
+            const char = text[index];
+
+            if (inString) {
+                if (char === '\\') {
+                    index += 1;
+                    continue;
+                }
+                if (char === stringChar) {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (char === '"' || char === '\'' || char === '`') {
+                inString = true;
+                stringChar = char;
+                continue;
+            }
+
+            if (char === openChar) {
+                depth += 1;
+            } else if (char === closeChar) {
+                depth -= 1;
+                if (depth === 0) {
+                    const content = text.slice(1, index);
+                    const rest = text.slice(index + 1);
+                    return { content, rest, endIndex: index };
+                }
+            }
+        }
+
+        return null;
+    };
+
+    const readJsExpression = (source, startIndex) => {
+        const length = source.length;
+        let index = startIndex;
+
+        while (index < length && /\s/.test(source[index])) {
+            index += 1;
+        }
+
+        if (index >= length) return null;
+
+        const startChar = source[index];
+        const start = index;
+
+        if (startChar === '{' || startChar === '[') {
+            const closing = extractBalancedSegment(source.slice(index), startChar, startChar === '{' ? '}' : ']');
+            if (closing) {
+                const consumedLength = closing.endIndex + 1;
+                return source.slice(start, start + consumedLength);
+            }
+        }
+
+        if (startChar === '"' || startChar === '\'' || startChar === '`') {
+            let inEscape = false;
+            for (let i = index + 1; i < length; i++) {
+                const char = source[i];
+                if (inEscape) {
+                    inEscape = false;
+                    continue;
+                }
+                if (char === '\\') {
+                    inEscape = true;
+                    continue;
+                }
+                if (char === startChar) {
+                    return source.slice(start, i + 1);
+                }
+            }
+            return null;
+        }
+
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let i = index; i < length; i++) {
+            const char = source[i];
+
+            if (inString) {
+                if (char === '\\') {
+                    i += 1;
+                    continue;
+                }
+                if (char === stringChar) {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (char === '"' || char === '\'' || char === '`') {
+                inString = true;
+                stringChar = char;
+                continue;
+            }
+
+            if (char === '(') {
+                depth += 1;
+                continue;
+            }
+
+            if (char === ')') {
+                if (depth > 0) {
+                    depth -= 1;
+                    continue;
+                }
+            }
+
+            if (char === ';' && depth === 0) {
+                return source.slice(start, i);
+            }
+
+            if (char === '<' && source.slice(i, i + 8).toLowerCase() === '</script') {
+                return source.slice(start, i);
+            }
+        }
+
+        return source.slice(start);
+    };
+
+    const extractAssignmentValue = () => {
+        const assignmentPatterns = [
+            /(?:window\.|globalThis\.|self\.)?__NEXT_DATA__\s*=\s*/i,
+            /(?:window|globalThis|self)?\["__NEXT_DATA__"\]\s*=\s*/i
+        ];
+
+        for (const pattern of assignmentPatterns) {
+            const match = pattern.exec(html);
+            if (!match) continue;
+
+            const expression = readJsExpression(html, match.index + match[0].length);
+            if (expression) {
+                return expression;
+            }
+        }
+
+        return null;
+    };
+
+    const extractNextData = () => {
+        const scriptMatch = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+        if (scriptMatch) {
+            return scriptMatch[1];
+        }
+
+        const assignmentValue = extractAssignmentValue();
+        if (assignmentValue) {
+            return assignmentValue;
+        }
+
+        return null;
+    };
+
+    const decodeAndUnescape = raw => {
+        if (typeof raw !== 'string') return raw;
+        const entityDecoded = decodeEntities(raw);
+        try {
+            return JSON.parse(`"${entityDecoded.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+        } catch (error) {
+            return entityDecoded;
+        }
+    };
+
+    const unwrapStringLiteral = value => {
+        if (value.length < 2) return value;
+        const firstChar = value[0];
+        const lastChar = value[value.length - 1];
+        if ((firstChar === '"' && lastChar === '"') || (firstChar === '\'' && lastChar === '\'') || (firstChar === '`' && lastChar === '`')) {
+            const inner = value.slice(1, -1);
+            if (firstChar === '"') {
+                try {
+                    return JSON.parse(value);
+                } catch (err) {
+                    return inner.replace(/\\"/g, '"');
+                }
+            }
+            if (firstChar === '\'') {
+                return inner.replace(/\\'/g, '\'').replace(/\\"/g, '"');
+            }
+            return inner.replace(/\\`/g, '`');
+        }
+        return value;
+    };
+
+    const stripTrailingSemicolons = text => text.replace(/;\s*$/g, '').trim();
+
+    const tryUnwrapFunction = (expression, names, transform) => {
+        const trimmed = expression.trim();
+        const candidates = [];
+        for (const name of names) {
+            candidates.push(name);
+            candidates.push(`window.${name}`);
+            candidates.push(`globalThis.${name}`);
+            candidates.push(`self.${name}`);
+        }
+
+        for (const candidate of candidates) {
+            if (!trimmed.startsWith(`${candidate}(`)) continue;
+
+            const segment = extractBalancedSegment(trimmed.slice(candidate.length), '(', ')');
+            if (!segment) continue;
+
+            const inner = segment.content.trim();
+            let transformed = transform(inner);
+            if (transformed == null) {
+                transformed = inner;
+            }
+            return transformed;
+        }
+
+        return null;
+    };
+
+    const unwrapExpression = initial => {
+        let current = stripTrailingSemicolons(initial);
+        let iterations = 0;
+
+        while (iterations < 10) {
+            iterations += 1;
+            const withoutJsonParse = tryUnwrapFunction(current, ['JSON.parse'], inner => inner);
+            if (withoutJsonParse) {
+                current = withoutJsonParse;
+                continue;
+            }
+
+            const withoutDecode = tryUnwrapFunction(current, ['decodeURIComponent', 'decodeURI'], inner => {
+                const literal = unwrapStringLiteral(inner.trim());
+                try {
+                    return decodeURIComponent(literal);
+                } catch (err) {
+                    return literal;
+                }
+            });
+            if (withoutDecode) {
+                current = withoutDecode;
+                continue;
+            }
+
+            const withoutAtob = tryUnwrapFunction(current, ['atob'], inner => {
+                const literal = unwrapStringLiteral(inner.trim());
+                try {
+                    return Buffer.from(literal, 'base64').toString('utf8');
+                } catch (err) {
+                    return literal;
+                }
+            });
+            if (withoutAtob) {
+                current = withoutAtob;
+                continue;
+            }
+
+            break;
+        }
+
+        return current.trim();
+    };
+
+    const extractFromDocumentFallback = () => {
+        const sanitized = html.replace(/<script[^>]*>\s*?\/\*[\s\S]*?\*\/\s*?<\/script>/gi, '');
+        const searchSources = [sanitized, sanitized.replace(/\\+["']/g, match => match.slice(-1))];
+
+        const audioRegexes = [
+            /["']audio[_-]?url["']\s*:\s*["']([^"']+)["']/i,
+            /<meta[^>]+property=["']og:audio(?::url)?["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+            /<audio[^>]+src=["']([^"']+)["'][^>]*>/i
+        ];
+
+        let audioMatch = null;
+        let titleMatch = null;
+        let durationMatch = null;
+
+        for (const source of searchSources) {
+            for (const regex of audioRegexes) {
+                const match = source.match(regex);
+                if (match) {
+                    audioMatch = match;
+                    break;
+                }
+            }
+            if (audioMatch) {
+                titleMatch = source.match(/["']title["']\s*:\s*["']([^"']+)["']/i);
+                durationMatch = source.match(/["'](?:audio_length_seconds|duration_seconds|duration)["']\s*:\s*["']?([\d.]+)["']?/i);
+                break;
+            }
+        }
+
+        if (!audioMatch) {
+            return null;
+        }
+
+        const metaTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["'][^>]*>/i);
+
+        return {
+            title: titleMatch ? decodeAndUnescape(titleMatch[1]) : metaTitleMatch ? decodeAndUnescape(metaTitleMatch[1]) : undefined,
+            audio_url: decodeAndUnescape(audioMatch[1]),
+            audio_length_seconds: durationMatch ? Number(durationMatch[1]) : undefined
+        };
+    };
+
+    let rawJson = extractNextData();
+    let parsedJson;
+
+    if (rawJson) {
+        rawJson = decodeEntities(rawJson.trim());
+        if (!rawJson) {
+            rawJson = null;
+        }
+    }
+
+    if (rawJson) {
+        rawJson = unwrapExpression(rawJson);
+        rawJson = unwrapStringLiteral(rawJson.trim());
+
+        try {
+            parsedJson = JSON.parse(rawJson);
+        } catch (err) {
+            const fallbackData = extractFromDocumentFallback();
+            if (!fallbackData) {
+                throw new Error(`Unable to parse Suno metadata JSON: ${err.message}`);
+            }
+            parsedJson = fallbackData;
+        }
+    } else {
+        const fallbackData = extractFromDocumentFallback();
+        if (fallbackData) {
+            parsedJson = fallbackData;
+        }
+    }
+
+    if (!parsedJson) {
+        throw new Error('Unable to locate Suno song metadata.');
+    }
+
+    const findSongData = value => {
+        if (!value || typeof value !== 'object') return null;
+
+        if ('audio_url' in value || 'audioUrl' in value) {
+            return value;
+        }
+
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                const found = findSongData(item);
+                if (found) return found;
+            }
+        } else {
+            for (const key of Object.keys(value)) {
+                const found = findSongData(value[key]);
+                if (found) return found;
+            }
+        }
+
+        return null;
+    };
+
+    const songData = findSongData(parsedJson);
+
+    if (!songData) {
+        throw new Error('Unable to extract Suno song information from metadata.');
+    }
+
+    const audioUrl = songData.audio_url || songData.audioUrl;
+    if (!audioUrl) {
+        throw new Error('Suno song metadata does not include an audio URL.');
+    }
+
+    let rawDuration = songData.audio_length_seconds ?? songData.duration_seconds ?? songData.duration ?? null;
+    if (typeof rawDuration === 'string') {
+        const parsed = Number(rawDuration);
+        rawDuration = Number.isFinite(parsed) ? parsed : null;
+    }
+
+    const durationSeconds = typeof rawDuration === 'number' && Number.isFinite(rawDuration) ? rawDuration : null;
+
+    const title = songData.title || songData.name || songData.display_name || 'Unknown Title';
+
+    return {
+        title,
+        durationSeconds,
+        audioUrl
+    };
+}
+
+helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl) {
     return new Promise((resolve, reject) => {
         let parsedUrl;
         try {
@@ -123,20 +552,32 @@ async function openStreamFromUrl(streamUrl) {
 
         request.once('error', reject);
     });
-}
+};
 
-async function createAudioResourceFromYoutube(url) {
-    const data = await runYtDlp(url);
-    if (!data.stream_url) {
-        throw new Error('No stream URL retrieved from yt-dlp');
+helpers.createAudioResourceForSong = async function createAudioResourceForSong(song) {
+    let metadata = {};
+    let stream;
+
+    if (song.streamUrl) {
+        stream = await helpers.openStreamFromUrl(song.streamUrl);
+        metadata = {
+            title: song.title,
+            duration: song.durationSeconds ?? null,
+            stream_url: song.streamUrl
+        };
+    } else {
+        metadata = await runYtDlp(song.url);
+        if (!metadata.stream_url) {
+            throw new Error('No stream URL retrieved from yt-dlp');
+        }
+        stream = await helpers.openStreamFromUrl(metadata.stream_url);
     }
 
-    const stream = await openStreamFromUrl(data.stream_url);
     const probe = await demuxProbe(stream);
     const resource = createAudioResource(probe.stream, { inputType: probe.type, inlineVolume: true });
 
-    return { resource, metadata: data };
-}
+    return { resource, metadata };
+};
 
 let youtubeSearchModulePromise;
 async function searchYouTube(query) {
@@ -147,7 +588,7 @@ async function searchYouTube(query) {
     return mod.search(query);
 }
 
-async function playSong(guild, song, serverQueue) {
+helpers.playSong = async function playSong(guild, song, serverQueue) {
     const queueConstruct = serverQueue.get(guild.id);
     if (!queueConstruct) return;
 
@@ -158,7 +599,7 @@ async function playSong(guild, song, serverQueue) {
     }
 
     try {
-        const { resource, metadata } = await createAudioResourceFromYoutube(song.url);
+        const { resource, metadata } = await helpers.createAudioResourceForSong(song);
 
         if (!song.title && metadata.title) {
             song.title = metadata.title;
@@ -177,14 +618,14 @@ async function playSong(guild, song, serverQueue) {
 
         queueConstruct.songs.shift();
         if (queueConstruct.songs.length > 0) {
-            await playSong(guild, queueConstruct.songs[0], serverQueue);
+            await helpers.playSong(guild, queueConstruct.songs[0], serverQueue);
         } else {
             destroyConnection(queueConstruct.connection);
             serverQueue.delete(guild.id);
             queueConstruct.textChannel.send('⏹️ Queue finished. Leaving voice channel.').catch(() => {});
         }
     }
-}
+};
 
 module.exports = async function (message, serverQueue) {
     const args = message.content.split(' ').slice(1);
@@ -296,6 +737,15 @@ module.exports = async function (message, serverQueue) {
                         throw err;
                     }
                 }
+            } else if (/https?:\/\/(?:www\.)?suno\.com\/s\//i.test(query)) {
+                const sunoMetadata = await fetchSunoSong(query);
+                songsToAdd.push({
+                    title: sunoMetadata.title || query,
+                    url: query,
+                    duration: formatDuration(sunoMetadata.durationSeconds),
+                    streamUrl: sunoMetadata.audioUrl,
+                    durationSeconds: sunoMetadata.durationSeconds ?? undefined
+                });
             } else {
                 const metadata = await runYtDlp(query);
                 songsToAdd.push({
@@ -360,17 +810,17 @@ module.exports = async function (message, serverQueue) {
             player.on(AudioPlayerStatus.Idle, () => {
                 (async () => {
                     if (queueConstruct.loop === 'single' && queueConstruct.songs.length > 0) {
-                        await playSong(message.guild, queueConstruct.songs[0], serverQueue);
+                        await helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue);
                         message.channel.send(`🔁 Looping **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`).catch(() => {});
                     } else if (queueConstruct.loop === 'all' && queueConstruct.songs.length > 0) {
                         const finishedSong = queueConstruct.songs.shift();
                         queueConstruct.songs.push(finishedSong);
-                        await playSong(message.guild, queueConstruct.songs[0], serverQueue);
+                        await helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue);
                         message.channel.send(`🔁 Looping entire queue. Now playing: **${queueConstruct.songs[0].title}** (${queueConstruct.songs[0].duration}).`).catch(() => {});
                     } else {
                         queueConstruct.songs.shift();
                         if (queueConstruct.songs.length > 0) {
-                            await playSong(message.guild, queueConstruct.songs[0], serverQueue);
+                            await helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue);
                         } else {
                             destroyConnection(queueConstruct.connection);
                             serverQueue.delete(message.guild.id);
@@ -387,7 +837,7 @@ module.exports = async function (message, serverQueue) {
                 message.channel.send('❌ Error: Could not play the audio. Skipping to next song if available.').catch(() => {});
                 queueConstruct.songs.shift();
                 if (queueConstruct.songs.length > 0) {
-                    playSong(message.guild, queueConstruct.songs[0], serverQueue).catch(err => console.error('Playback retry failed:', err));
+                    helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue).catch(err => console.error('Playback retry failed:', err));
                 } else {
                     destroyConnection(queueConstruct.connection);
                     serverQueue.delete(message.guild.id);
@@ -395,7 +845,7 @@ module.exports = async function (message, serverQueue) {
                 }
             });
 
-            playSong(message.guild, queueConstruct.songs[0], serverQueue).catch(err => {
+            helpers.playSong(message.guild, queueConstruct.songs[0], serverQueue).catch(err => {
                 console.error('Initial playback failed:', err);
             });
             if (isPlaylist && remainingSpotifyTracks.length > 0) {
@@ -452,3 +902,7 @@ module.exports = async function (message, serverQueue) {
         }
     }
 };
+
+module.exports.fetchSunoSong = fetchSunoSong;
+module.exports.helpers = helpers;
+module.exports.runYtDlp = runYtDlp;
