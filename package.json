@@ -19,6 +19,7 @@
     "spotify-url-info": "^3.2.18",
     "undici": "^7.10.0",
     "youtube-search-without-api-key": "^2.0.1",
+    "ytdl-core": "^4.11.5",
     "ytpl": "^2.3.0"
   },
   "devDependencies": {
