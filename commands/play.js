@@ -13,6 +13,7 @@ const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 const { PassThrough } = require('stream');
+const ytdl = require('ytdl-core');
 
 const YTDLP_SCRIPT = `
 import yt_dlp, json, sys
@@ -103,6 +104,62 @@ function destroyConnection(connection) {
 }
 
 const helpers = {};
+
+const YOUTUBE_HOST_PATTERNS = [
+    /(^|\.)youtube\.com$/i,
+    /(^|\.)youtu\.be$/i,
+    /(^|\.)music\.youtube\.com$/i
+];
+
+const DEFAULT_YTDL_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36',
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Connection': 'keep-alive'
+};
+
+helpers.isYouTubeUrl = function isYouTubeUrl(value) {
+    if (!value || typeof value !== 'string') {
+        return false;
+    }
+    try {
+        const parsed = new URL(value);
+        const hostname = parsed.hostname.toLowerCase();
+        return YOUTUBE_HOST_PATTERNS.some(pattern => pattern.test(hostname));
+    } catch (err) {
+        return false;
+    }
+};
+
+helpers.createYouTubeStream = async function createYouTubeStream(videoUrl) {
+    const info = await ytdl.getInfo(videoUrl);
+    const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
+
+    if (!format || !format.url) {
+        throw new Error('No suitable audio format found for YouTube video');
+    }
+
+    const stream = ytdl.downloadFromInfo(info, {
+        filter: 'audioonly',
+        quality: 'highestaudio',
+        highWaterMark: 1 << 24,
+        requestOptions: { headers: DEFAULT_YTDL_HEADERS }
+    });
+
+    const lengthSeconds = Number(info?.videoDetails?.lengthSeconds);
+    const duration = Number.isFinite(lengthSeconds) ? lengthSeconds : null;
+    const title = info?.videoDetails?.title ?? null;
+
+    const metadata = {
+        title,
+        duration,
+        stream_url: format.url,
+        stream_source: 'ytdl-core',
+        stream_headers: { ...DEFAULT_YTDL_HEADERS }
+    };
+
+    return { stream, metadata };
+};
 
 async function fetchSunoSong(url) {
     const response = await fetch(url, {
@@ -648,52 +705,73 @@ helpers.createAudioResourceForSong = async function createAudioResourceForSong(s
     let stream;
     let requestHeaders = {};
 
-    if (song.streamUrl) {
-        if (song.streamHeaders && typeof song.streamHeaders === 'object') {
-            requestHeaders = song.streamHeaders;
-        }
+    if (song.url && helpers.isYouTubeUrl(song.url)) {
         try {
-            stream = await helpers.openStreamFromUrl(song.streamUrl, requestHeaders);
-        } catch (error) {
-            if (/HTTP 40[13]/.test(error.message) && song.url) {
-                stream = await helpers.openStreamViaYtDlp(song.url);
-                metadata.stream_source = 'yt-dlp-cli';
-            } else {
-                throw error;
+            const youtubeResult = await helpers.createYouTubeStream(song.url);
+            stream = youtubeResult.stream;
+            metadata = youtubeResult.metadata || {};
+            if (metadata.stream_headers && typeof metadata.stream_headers === 'object') {
+                requestHeaders = metadata.stream_headers;
             }
-        }
-        metadata = {
-            title: song.title,
-            duration: song.durationSeconds ?? null,
-            stream_url: song.streamUrl
-        };
-        if (requestHeaders && Object.keys(requestHeaders).length > 0) {
-            metadata.stream_headers = requestHeaders;
-        }
-    } else {
-        metadata = await runYtDlp(song.url);
-        if (metadata.http_headers && typeof metadata.http_headers === 'object') {
-            requestHeaders = metadata.http_headers;
-        } else {
+        } catch (error) {
+            console.warn('YouTube stream via ytdl-core failed, falling back to yt-dlp handling:', error);
+            stream = undefined;
+            metadata = {};
             requestHeaders = {};
         }
-        if (!metadata.stream_url) {
-            throw new Error('No stream URL retrieved from yt-dlp');
-        }
-        try {
-            stream = await helpers.openStreamFromUrl(metadata.stream_url, requestHeaders);
-        } catch (error) {
-            if (/HTTP 40[13]/.test(error.message)) {
-                const fallbackUrl = metadata.webpage_url || song.url;
-                stream = await helpers.openStreamViaYtDlp(fallbackUrl);
-                metadata.stream_source = 'yt-dlp-cli';
+    }
+
+    if (!stream) {
+        if (song.streamUrl) {
+            if (song.streamHeaders && typeof song.streamHeaders === 'object') {
+                requestHeaders = song.streamHeaders;
+            }
+            try {
+                stream = await helpers.openStreamFromUrl(song.streamUrl, requestHeaders);
+            } catch (error) {
+                if (/HTTP 40[13]/.test(error.message) && song.url) {
+                    stream = await helpers.openStreamViaYtDlp(song.url);
+                    metadata.stream_source = 'yt-dlp-cli';
+                } else {
+                    throw error;
+                }
+            }
+            metadata = {
+                title: song.title,
+                duration: song.durationSeconds ?? null,
+                stream_url: song.streamUrl,
+                ...(metadata.stream_source ? { stream_source: metadata.stream_source } : {})
+            };
+        } else {
+            metadata = await runYtDlp(song.url);
+            if (metadata.http_headers && typeof metadata.http_headers === 'object') {
+                requestHeaders = metadata.http_headers;
             } else {
-                throw error;
+                requestHeaders = {};
+            }
+            if (!metadata.stream_url) {
+                throw new Error('No stream URL retrieved from yt-dlp');
+            }
+            try {
+                stream = await helpers.openStreamFromUrl(metadata.stream_url, requestHeaders);
+            } catch (error) {
+                if (/HTTP 40[13]/.test(error.message)) {
+                    const fallbackUrl = metadata.webpage_url || song.url;
+                    stream = await helpers.openStreamViaYtDlp(fallbackUrl);
+                    metadata.stream_source = 'yt-dlp-cli';
+                } else {
+                    throw error;
+                }
             }
         }
-        if (requestHeaders && Object.keys(requestHeaders).length > 0) {
-            metadata.stream_headers = requestHeaders;
-        }
+    }
+
+    if (!stream) {
+        throw new Error('Failed to obtain audio stream');
+    }
+
+    if (requestHeaders && Object.keys(requestHeaders).length > 0) {
+        metadata.stream_headers = requestHeaders;
     }
 
     const probe = await demuxProbe(stream);
