@@ -87,7 +87,7 @@ describe('play command Suno integration', () => {
             text: async () => html
         });
 
-        const openStreamSpy = jest.spyOn(playCommand.helpers, 'openStreamFromUrl').mockImplementation(async url => {
+        const openStreamSpy = jest.spyOn(playCommand.helpers, 'openStreamFromUrl').mockImplementation(async (url, headers) => {
             const stream = new PassThrough();
             stream.end();
             return stream;
@@ -105,7 +105,7 @@ describe('play command Suno integration', () => {
         expect(queue.songs[0].title).toBe('Test Song');
         expect(queue.songs[0].duration).toBe('02:05');
 
-        expect(openStreamSpy).toHaveBeenCalledWith('https://cdn.suno.com/audio/test.mp3');
+        expect(openStreamSpy).toHaveBeenCalledWith('https://cdn.suno.com/audio/test.mp3', {});
         expect(queue.player.play).toHaveBeenCalled();
 
         openStreamSpy.mockRestore();

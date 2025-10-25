@@ -12,6 +12,7 @@ const { spawn } = require('child_process');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+const { PassThrough } = require('stream');
 
 const YTDLP_SCRIPT = `
 import yt_dlp, json, sys
@@ -46,6 +47,7 @@ with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         'duration': info.get('duration'),
         'webpage_url': info.get('webpage_url') or url,
         'stream_url': info.get('url'),
+        'http_headers': info.get('http_headers', {}),
     }
 
     print(json.dumps(result))
@@ -523,7 +525,7 @@ async function fetchSunoSong(url) {
     };
 }
 
-helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl) {
+helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl, extraHeaders = {}) {
     return new Promise((resolve, reject) => {
         let parsedUrl;
         try {
@@ -534,13 +536,31 @@ helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl) {
         }
 
         const requestFn = parsedUrl.protocol === 'http:' ? http.get : https.get;
-        const request = requestFn(streamUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36',
-                'Accept': '*/*',
-                'Accept-Encoding': 'identity',
-                'Connection': 'keep-alive'
+        const sanitizedHeaders = {};
+
+        if (extraHeaders && typeof extraHeaders === 'object') {
+            for (const [key, value] of Object.entries(extraHeaders)) {
+                if (value !== undefined && value !== null) {
+                    sanitizedHeaders[key] = typeof value === 'string' ? value : String(value);
+                }
             }
+        }
+
+        if (!('User-Agent' in sanitizedHeaders) && !('user-agent' in sanitizedHeaders)) {
+            sanitizedHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36';
+        }
+        if (!('Accept' in sanitizedHeaders) && !('accept' in sanitizedHeaders)) {
+            sanitizedHeaders.Accept = '*/*';
+        }
+        if (!('Accept-Encoding' in sanitizedHeaders) && !('accept-encoding' in sanitizedHeaders)) {
+            sanitizedHeaders['Accept-Encoding'] = 'identity';
+        }
+        if (!('Connection' in sanitizedHeaders) && !('connection' in sanitizedHeaders)) {
+            sanitizedHeaders.Connection = 'keep-alive';
+        }
+
+        const request = requestFn(streamUrl, {
+            headers: sanitizedHeaders
         }, response => {
             if (response.statusCode && response.statusCode >= 400) {
                 response.resume();
@@ -554,23 +574,126 @@ helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl) {
     });
 };
 
+helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url) {
+    return new Promise((resolve, reject) => {
+        const args = [
+            '-f',
+            'bestaudio/best',
+            '--quiet',
+            '--no-warnings',
+            '--no-progress',
+            '-o',
+            '-',
+            url
+        ];
+
+        const ytProcess = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        const passThrough = new PassThrough();
+        let stderr = '';
+        let resolved = false;
+        let receivedData = false;
+
+        const fail = error => {
+            if (!resolved) {
+                resolved = true;
+                passThrough.destroy(error);
+                reject(error);
+            } else {
+                passThrough.destroy(error);
+            }
+        };
+
+        ytProcess.once('error', fail);
+        ytProcess.stderr?.on('data', chunk => {
+            stderr += chunk.toString();
+        });
+
+        if (ytProcess.stdout) {
+            ytProcess.stdout.on('error', fail);
+            ytProcess.stdout.pipe(passThrough);
+        } else {
+            fail(new Error('yt-dlp did not provide a stdout stream'));
+            return;
+        }
+
+        passThrough.once('data', () => {
+            receivedData = true;
+            if (!resolved) {
+                resolved = true;
+                resolve(passThrough);
+            }
+        });
+
+        ytProcess.once('close', code => {
+            if (code !== 0) {
+                fail(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            } else if (!receivedData) {
+                fail(new Error('yt-dlp produced no audio data'));
+            } else if (!resolved) {
+                resolved = true;
+                resolve(passThrough);
+            }
+        });
+
+        passThrough.once('close', () => {
+            if (ytProcess.exitCode === null && ytProcess.signalCode === null) {
+                ytProcess.kill('SIGKILL');
+            }
+        });
+    });
+};
+
 helpers.createAudioResourceForSong = async function createAudioResourceForSong(song) {
     let metadata = {};
     let stream;
+    let requestHeaders = {};
 
     if (song.streamUrl) {
-        stream = await helpers.openStreamFromUrl(song.streamUrl);
+        if (song.streamHeaders && typeof song.streamHeaders === 'object') {
+            requestHeaders = song.streamHeaders;
+        }
+        try {
+            stream = await helpers.openStreamFromUrl(song.streamUrl, requestHeaders);
+        } catch (error) {
+            if (/HTTP 40[13]/.test(error.message) && song.url) {
+                stream = await helpers.openStreamViaYtDlp(song.url);
+                metadata.stream_source = 'yt-dlp-cli';
+            } else {
+                throw error;
+            }
+        }
         metadata = {
             title: song.title,
             duration: song.durationSeconds ?? null,
             stream_url: song.streamUrl
         };
+        if (requestHeaders && Object.keys(requestHeaders).length > 0) {
+            metadata.stream_headers = requestHeaders;
+        }
     } else {
         metadata = await runYtDlp(song.url);
+        if (metadata.http_headers && typeof metadata.http_headers === 'object') {
+            requestHeaders = metadata.http_headers;
+        } else {
+            requestHeaders = {};
+        }
         if (!metadata.stream_url) {
             throw new Error('No stream URL retrieved from yt-dlp');
         }
-        stream = await helpers.openStreamFromUrl(metadata.stream_url);
+        try {
+            stream = await helpers.openStreamFromUrl(metadata.stream_url, requestHeaders);
+        } catch (error) {
+            if (/HTTP 40[13]/.test(error.message)) {
+                const fallbackUrl = metadata.webpage_url || song.url;
+                stream = await helpers.openStreamViaYtDlp(fallbackUrl);
+                metadata.stream_source = 'yt-dlp-cli';
+            } else {
+                throw error;
+            }
+        }
+        if (requestHeaders && Object.keys(requestHeaders).length > 0) {
+            metadata.stream_headers = requestHeaders;
+        }
     }
 
     const probe = await demuxProbe(stream);
