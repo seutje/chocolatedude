@@ -574,7 +574,7 @@ helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl, extraHea
     });
 };
 
-helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url) {
+helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url, headers = {}) {
     return new Promise((resolve, reject) => {
         const args = [
             '-f',
@@ -586,6 +586,52 @@ helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url) {
             '-',
             url
         ];
+
+        if (headers && typeof headers === 'object') {
+            const normalizedHeaders = {};
+
+            for (const [key, value] of Object.entries(headers)) {
+                if (value === undefined || value === null) continue;
+                const normalizedKey = key.trim();
+                if (!normalizedKey) continue;
+                normalizedHeaders[normalizedKey] = typeof value === 'string' ? value : String(value);
+            }
+
+            const getHeaderValue = (...names) => {
+                for (const name of names) {
+                    if (name in normalizedHeaders) {
+                        return normalizedHeaders[name];
+                    }
+                }
+                return null;
+            };
+
+            const deleteHeader = name => {
+                if (name in normalizedHeaders) {
+                    delete normalizedHeaders[name];
+                }
+            };
+
+            const userAgent = getHeaderValue('User-Agent', 'user-agent');
+            if (userAgent) {
+                args.push('--user-agent', userAgent);
+                deleteHeader('User-Agent');
+                deleteHeader('user-agent');
+            }
+
+            const referer = getHeaderValue('Referer', 'referer');
+            if (referer) {
+                args.push('--referer', referer);
+                deleteHeader('Referer');
+                deleteHeader('referer');
+            }
+
+            for (const [key, value] of Object.entries(normalizedHeaders)) {
+                if (!value) continue;
+                const sanitizedValue = value.replace(/[\r\n]/g, ' ');
+                args.push('--add-header', `${key}: ${sanitizedValue}`);
+            }
+        }
 
         const ytProcess = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
         const passThrough = new PassThrough();
@@ -656,7 +702,7 @@ helpers.createAudioResourceForSong = async function createAudioResourceForSong(s
             stream = await helpers.openStreamFromUrl(song.streamUrl, requestHeaders);
         } catch (error) {
             if (/HTTP 40[13]/.test(error.message) && song.url) {
-                stream = await helpers.openStreamViaYtDlp(song.url);
+                stream = await helpers.openStreamViaYtDlp(song.url, requestHeaders);
                 metadata.stream_source = 'yt-dlp-cli';
             } else {
                 throw error;
@@ -685,7 +731,7 @@ helpers.createAudioResourceForSong = async function createAudioResourceForSong(s
         } catch (error) {
             if (/HTTP 40[13]/.test(error.message)) {
                 const fallbackUrl = metadata.webpage_url || song.url;
-                stream = await helpers.openStreamViaYtDlp(fallbackUrl);
+                stream = await helpers.openStreamViaYtDlp(fallbackUrl, requestHeaders);
                 metadata.stream_source = 'yt-dlp-cli';
             } else {
                 throw error;
