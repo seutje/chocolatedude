@@ -14,6 +14,8 @@ const https = require('https');
 const { URL } = require('url');
 const { PassThrough } = require('stream');
 
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36';
+
 const YTDLP_SCRIPT = `
 import yt_dlp, json, sys
 
@@ -525,6 +527,38 @@ async function fetchSunoSong(url) {
     };
 }
 
+function sanitizeHeaders(headers) {
+    if (!headers || typeof headers !== 'object') {
+        return {};
+    }
+
+    const sanitized = {};
+    for (const [key, value] of Object.entries(headers)) {
+        if (value === undefined || value === null) continue;
+        sanitized[key] = typeof value === 'string' ? value : String(value);
+    }
+    return sanitized;
+}
+
+function applyDefaultHeaders(headers) {
+    const sanitizedHeaders = sanitizeHeaders(headers);
+    const lowerCaseKeys = new Set(Object.keys(sanitizedHeaders).map(key => key.toLowerCase()));
+
+    const ensureHeader = (name, value) => {
+        if (!lowerCaseKeys.has(name.toLowerCase())) {
+            sanitizedHeaders[name] = value;
+            lowerCaseKeys.add(name.toLowerCase());
+        }
+    };
+
+    ensureHeader('User-Agent', DEFAULT_USER_AGENT);
+    ensureHeader('Accept', '*/*');
+    ensureHeader('Accept-Encoding', 'identity');
+    ensureHeader('Connection', 'keep-alive');
+
+    return sanitizedHeaders;
+}
+
 helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl, extraHeaders = {}) {
     return new Promise((resolve, reject) => {
         let parsedUrl;
@@ -536,28 +570,7 @@ helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl, extraHea
         }
 
         const requestFn = parsedUrl.protocol === 'http:' ? http.get : https.get;
-        const sanitizedHeaders = {};
-
-        if (extraHeaders && typeof extraHeaders === 'object') {
-            for (const [key, value] of Object.entries(extraHeaders)) {
-                if (value !== undefined && value !== null) {
-                    sanitizedHeaders[key] = typeof value === 'string' ? value : String(value);
-                }
-            }
-        }
-
-        if (!('User-Agent' in sanitizedHeaders) && !('user-agent' in sanitizedHeaders)) {
-            sanitizedHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36';
-        }
-        if (!('Accept' in sanitizedHeaders) && !('accept' in sanitizedHeaders)) {
-            sanitizedHeaders.Accept = '*/*';
-        }
-        if (!('Accept-Encoding' in sanitizedHeaders) && !('accept-encoding' in sanitizedHeaders)) {
-            sanitizedHeaders['Accept-Encoding'] = 'identity';
-        }
-        if (!('Connection' in sanitizedHeaders) && !('connection' in sanitizedHeaders)) {
-            sanitizedHeaders.Connection = 'keep-alive';
-        }
+        const sanitizedHeaders = applyDefaultHeaders(extraHeaders);
 
         const request = requestFn(streamUrl, {
             headers: sanitizedHeaders
@@ -574,7 +587,18 @@ helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl, extraHea
     });
 };
 
-helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url) {
+helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url, extraHeaders = {}) {
+    const sanitizedHeaders = applyDefaultHeaders(extraHeaders);
+    const headerEntries = Object.entries(sanitizedHeaders);
+    let userAgent = DEFAULT_USER_AGENT;
+
+    for (const [key, value] of headerEntries) {
+        if (key.toLowerCase() === 'user-agent') {
+            userAgent = value;
+            break;
+        }
+    }
+
     return new Promise((resolve, reject) => {
         const args = [
             '-f',
@@ -582,10 +606,18 @@ helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url) {
             '--quiet',
             '--no-warnings',
             '--no-progress',
+            '--user-agent',
+            userAgent,
             '-o',
             '-',
-            url
         ];
+
+        for (const [key, value] of headerEntries) {
+            if (key.toLowerCase() === 'user-agent') continue;
+            args.push('--add-header', `${key}:${value}`);
+        }
+
+        args.push(url);
 
         const ytProcess = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
         const passThrough = new PassThrough();
@@ -656,7 +688,7 @@ helpers.createAudioResourceForSong = async function createAudioResourceForSong(s
             stream = await helpers.openStreamFromUrl(song.streamUrl, requestHeaders);
         } catch (error) {
             if (/HTTP 40[13]/.test(error.message) && song.url) {
-                stream = await helpers.openStreamViaYtDlp(song.url);
+                stream = await helpers.openStreamViaYtDlp(song.url, requestHeaders);
                 metadata.stream_source = 'yt-dlp-cli';
             } else {
                 throw error;
@@ -685,7 +717,7 @@ helpers.createAudioResourceForSong = async function createAudioResourceForSong(s
         } catch (error) {
             if (/HTTP 40[13]/.test(error.message)) {
                 const fallbackUrl = metadata.webpage_url || song.url;
-                stream = await helpers.openStreamViaYtDlp(fallbackUrl);
+                stream = await helpers.openStreamViaYtDlp(fallbackUrl, requestHeaders);
                 metadata.stream_source = 'yt-dlp-cli';
             } else {
                 throw error;
