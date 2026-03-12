@@ -2,7 +2,7 @@ jest.mock('@discordjs/voice', () => {
     const { EventEmitter } = require('events');
 
     const joinVoiceChannel = jest.fn(() => ({
-        subscribe: jest.fn(),
+        subscribe: jest.fn(() => ({ unsubscribe: jest.fn() })),
         destroy: jest.fn(),
         state: { status: 'connected' }
     }));
@@ -24,13 +24,18 @@ jest.mock('@discordjs/voice', () => {
         type: 'mp3'
     }));
 
+    const entersState = jest.fn(async target => target);
+
     return {
         joinVoiceChannel,
+        getVoiceConnection: jest.fn(() => null),
         createAudioPlayer,
         createAudioResource,
         AudioPlayerStatus: { Idle: 'idle' },
         demuxProbe,
-        VoiceConnectionStatus: { Destroyed: 'destroyed' }
+        entersState,
+        NoSubscriberBehavior: { Play: 'play' },
+        VoiceConnectionStatus: { Destroyed: 'destroyed', Ready: 'ready' }
     };
 });
 

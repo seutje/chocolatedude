@@ -4,7 +4,7 @@ if (typeof global.fetch !== 'function') {
     global.fetch = undiciFetch;
 }
 
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, demuxProbe, VoiceConnectionStatus } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, demuxProbe, VoiceConnectionStatus, entersState, NoSubscriberBehavior, getVoiceConnection } = require('@discordjs/voice');
 const ytpl = require('ytpl');
 const { getTracks } = require('spotify-url-info')(global.fetch);
 const formatDuration = require('../formatDuration');
@@ -13,6 +13,7 @@ const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 const { PassThrough } = require('stream');
+const YOUTUBE_EXTRACTOR_ARGS = 'youtube:player_client=android,web';
 
 const YTDLP_SCRIPT = `
 import yt_dlp, json, sys
@@ -26,6 +27,7 @@ ydl_opts = {
     'no_warnings': True,
     'ignoreerrors': False,
     'geo_bypass': True,
+    'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
 }
 
 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -582,6 +584,8 @@ helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url) {
             '--quiet',
             '--no-warnings',
             '--no-progress',
+            '--extractor-args',
+            YOUTUBE_EXTRACTOR_ARGS,
             '-o',
             '-',
             url
@@ -610,14 +614,14 @@ helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url) {
 
         if (ytProcess.stdout) {
             ytProcess.stdout.on('error', fail);
-            ytProcess.stdout.pipe(passThrough);
         } else {
             fail(new Error('yt-dlp did not provide a stdout stream'));
             return;
         }
 
-        passThrough.once('data', () => {
+        ytProcess.stdout.once('readable', () => {
             receivedData = true;
+            ytProcess.stdout.pipe(passThrough);
             if (!resolved) {
                 resolved = true;
                 resolve(passThrough);
@@ -906,7 +910,11 @@ module.exports = async function (message, serverQueue) {
     let queueConstruct = serverQueue.get(message.guild.id);
 
     if (!queueConstruct) {
-        const player = createAudioPlayer();
+        const player = createAudioPlayer({
+            behaviors: {
+                noSubscriber: NoSubscriberBehavior.Play
+            }
+        });
         queueConstruct = {
             textChannel: message.channel,
             voiceChannel: voiceChannel,
@@ -922,13 +930,48 @@ module.exports = async function (message, serverQueue) {
         queueConstruct.songs.push(...songsToAdd);
 
         try {
+            const existingConnection = getVoiceConnection(message.guild.id);
+            if (existingConnection && existingConnection.state?.status !== VoiceConnectionStatus.Destroyed) {
+                existingConnection.destroy();
+            }
+
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator
             });
             queueConstruct.connection = connection;
-            connection.subscribe(player);
+
+            let ready = connection.state?.status === VoiceConnectionStatus.Ready;
+            if (!ready) {
+                try {
+                    await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+                    ready = true;
+                } catch (error) {
+                    if (error?.code !== 'ABORT_ERR') {
+                        throw error;
+                    }
+                    console.warn(`Voice ready timeout for guild ${message.guild.id}; current state: ${connection.state?.status || 'unknown'}`);
+                }
+            }
+
+            if (!ready && connection.state?.status === VoiceConnectionStatus.Disconnected && typeof connection.rejoin === 'function') {
+                connection.rejoin();
+                try {
+                    await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+                    ready = true;
+                } catch (error) {
+                    if (error?.code !== 'ABORT_ERR') {
+                        throw error;
+                    }
+                    console.warn(`Voice ready retry timeout for guild ${message.guild.id}; current state: ${connection.state?.status || 'unknown'}`);
+                }
+            }
+
+            const subscription = connection.subscribe(player);
+            if (!subscription) {
+                throw new Error('Failed to subscribe audio player to voice connection.');
+            }
 
             player.on(AudioPlayerStatus.Idle, () => {
                 (async () => {
