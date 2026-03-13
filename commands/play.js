@@ -4,7 +4,7 @@ if (typeof global.fetch !== 'function') {
     global.fetch = undiciFetch;
 }
 
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, demuxProbe, VoiceConnectionStatus, entersState, NoSubscriberBehavior, getVoiceConnection } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType, VoiceConnectionStatus, entersState, NoSubscriberBehavior, getVoiceConnection } = require('@discordjs/voice');
 const ytpl = require('ytpl');
 const { getTracks } = require('spotify-url-info')(global.fetch);
 const formatDuration = require('../formatDuration');
@@ -405,41 +405,56 @@ async function fetchSunoSong(url) {
         const sanitized = html.replace(/<script[^>]*>\s*?\/\*[\s\S]*?\*\/\s*?<\/script>/gi, '');
         const searchSources = [sanitized, sanitized.replace(/\\+["']/g, match => match.slice(-1))];
 
-        const audioRegexes = [
-            /["']audio[_-]?url["']\s*:\s*["']([^"']+)["']/i,
-            /<meta[^>]+property=["']og:audio(?::url)?["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-            /<audio[^>]+src=["']([^"']+)["'][^>]*>/i
+        const candidatePatterns = [
+            { type: 'json', regex: /["']audio[_-]?url["']\s*:\s*["']([^"']+)["']/gi },
+            { type: 'meta', regex: /<meta[^>]+property=["']og:audio(?::url)?["'][^>]+content=["']([^"']+)["'][^>]*>/gi },
+            { type: 'audio', regex: /<audio[^>]+src=["']([^"']+)["'][^>]*>/gi }
         ];
-
-        let audioMatch = null;
-        let titleMatch = null;
-        let durationMatch = null;
+        const candidates = [];
 
         for (const source of searchSources) {
-            for (const regex of audioRegexes) {
-                const match = source.match(regex);
-                if (match) {
-                    audioMatch = match;
-                    break;
+            for (const { type, regex } of candidatePatterns) {
+                for (const match of source.matchAll(regex)) {
+                    const url = decodeAndUnescape(match[1]);
+                    if (!url) continue;
+
+                    const index = match.index ?? 0;
+                    const context = source.slice(Math.max(0, index - 500), Math.min(source.length, index + 1500));
+                    const titleMatch = context.match(/["']title["']\s*:\s*["']([^"']+)["']/i);
+                    const durationMatch = context.match(/["'](?:audio_length_seconds|duration_seconds|duration)["']\s*:\s*["']?([\d.]+)["']?/i);
+                    let score = 0;
+
+                    if (type === 'json') score += 5;
+                    if (type === 'meta') score += 2;
+                    if (type === 'audio') score -= 2;
+                    if (/"clip"\s*:|["']clip["']/.test(context)) score += 6;
+                    if (/"shareSong"\s*:|["']shareSong["']/.test(context)) score += 5;
+                    if (/"status"\s*:\s*["']complete["']/.test(context)) score += 3;
+                    if (/id=["']silent-audio["']/.test(context)) score -= 20;
+                    if (/sil(?:ent|-)\d+\.mp3(?:$|[?#])/i.test(url) || /\/sil-\d+\.mp3(?:$|[?#])/i.test(url)) score -= 20;
+
+                    candidates.push({
+                        url,
+                        title: titleMatch ? decodeAndUnescape(titleMatch[1]) : undefined,
+                        duration: durationMatch ? Number(durationMatch[1]) : undefined,
+                        score
+                    });
                 }
-            }
-            if (audioMatch) {
-                titleMatch = source.match(/["']title["']\s*:\s*["']([^"']+)["']/i);
-                durationMatch = source.match(/["'](?:audio_length_seconds|duration_seconds|duration)["']\s*:\s*["']?([\d.]+)["']?/i);
-                break;
             }
         }
 
-        if (!audioMatch) {
+        if (candidates.length === 0) {
             return null;
         }
 
         const metaTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["'][^>]*>/i);
+        candidates.sort((left, right) => right.score - left.score);
+        const bestCandidate = candidates[0];
 
         return {
-            title: titleMatch ? decodeAndUnescape(titleMatch[1]) : metaTitleMatch ? decodeAndUnescape(metaTitleMatch[1]) : undefined,
-            audio_url: decodeAndUnescape(audioMatch[1]),
-            audio_length_seconds: durationMatch ? Number(durationMatch[1]) : undefined
+            title: bestCandidate.title || (metaTitleMatch ? decodeAndUnescape(metaTitleMatch[1]) : undefined),
+            audio_url: bestCandidate.url,
+            audio_length_seconds: Number.isFinite(bestCandidate.duration) ? bestCandidate.duration : undefined
         };
     };
 
@@ -527,7 +542,7 @@ async function fetchSunoSong(url) {
     };
 }
 
-helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl, extraHeaders = {}) {
+helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl, extraHeaders = {}, redirectCount = 0) {
     return new Promise((resolve, reject) => {
         let parsedUrl;
         try {
@@ -564,6 +579,27 @@ helpers.openStreamFromUrl = async function openStreamFromUrl(streamUrl, extraHea
         const request = requestFn(streamUrl, {
             headers: sanitizedHeaders
         }, response => {
+            const statusCode = response.statusCode ?? 0;
+
+            if ([301, 302, 303, 307, 308].includes(statusCode)) {
+                const location = response.headers?.location;
+                response.resume();
+
+                if (!location) {
+                    reject(new Error(`HTTP ${statusCode} redirect without location while fetching audio stream`));
+                    return;
+                }
+
+                if (redirectCount >= 5) {
+                    reject(new Error('Too many redirects while fetching audio stream'));
+                    return;
+                }
+
+                const redirectedUrl = new URL(location, parsedUrl).toString();
+                helpers.openStreamFromUrl(redirectedUrl, extraHeaders, redirectCount + 1).then(resolve, reject);
+                return;
+            }
+
             if (response.statusCode && response.statusCode >= 400) {
                 response.resume();
                 reject(new Error(`HTTP ${response.statusCode} while fetching audio stream`));
@@ -647,6 +683,98 @@ helpers.openStreamViaYtDlp = async function openStreamViaYtDlp(url) {
     });
 };
 
+helpers.transcodeStreamToPcm = async function transcodeStreamToPcm(stream, label = 'audio stream') {
+    return new Promise((resolve, reject) => {
+        const ffmpeg = spawn('ffmpeg', [
+            '-hide_banner',
+            '-loglevel',
+            'error',
+            '-fflags',
+            '+genpts+discardcorrupt',
+            '-i',
+            'pipe:0',
+            '-vn',
+            '-sn',
+            '-dn',
+            '-af',
+            'aresample=async=1:min_hard_comp=0.100:first_pts=0',
+            '-ac',
+            '2',
+            '-ar',
+            '48000',
+            '-f',
+            's16le',
+            'pipe:1'
+        ], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+        let stderr = '';
+        let resolved = false;
+        let receivedData = false;
+
+        const cleanup = () => {
+            if (typeof stream.unpipe === 'function') {
+                stream.unpipe(ffmpeg.stdin);
+            }
+            if (typeof stream.destroy === 'function' && !stream.destroyed) {
+                stream.destroy();
+            }
+            if (ffmpeg.exitCode === null && ffmpeg.signalCode === null) {
+                ffmpeg.kill('SIGKILL');
+            }
+        };
+
+        const fail = error => {
+            if (!resolved) {
+                resolved = true;
+                reject(error);
+            }
+            cleanup();
+            ffmpeg.stdout.destroy(error);
+        };
+
+        ffmpeg.once('error', fail);
+        ffmpeg.stderr?.on('data', chunk => {
+            stderr += chunk.toString();
+        });
+
+        stream.once('error', fail);
+        ffmpeg.stdout.once('error', fail);
+        ffmpeg.stdin.once('error', error => {
+            if (error && (error.code === 'EPIPE' || error.code === 'ERR_STREAM_DESTROYED')) {
+                return;
+            }
+            fail(error);
+        });
+
+        stream.pipe(ffmpeg.stdin);
+
+        ffmpeg.stdout.once('readable', () => {
+            receivedData = true;
+            if (!resolved) {
+                resolved = true;
+                resolve(ffmpeg.stdout);
+            }
+        });
+
+        ffmpeg.once('close', code => {
+            if (code !== 0) {
+                fail(new Error(stderr.trim() || `ffmpeg exited with code ${code} while transcoding ${label}`));
+            } else if (!resolved) {
+                if (!receivedData) {
+                    resolved = true;
+                    reject(new Error(`ffmpeg produced no audio data while transcoding ${label}`));
+                    cleanup();
+                } else {
+                    resolved = true;
+                    resolve(ffmpeg.stdout);
+                }
+            }
+        });
+
+        ffmpeg.stdout.once('close', cleanup);
+    });
+};
+
 helpers.createAudioResourceForSong = async function createAudioResourceForSong(song) {
     let metadata = {};
     let stream;
@@ -700,8 +828,8 @@ helpers.createAudioResourceForSong = async function createAudioResourceForSong(s
         }
     }
 
-    const probe = await demuxProbe(stream);
-    const resource = createAudioResource(probe.stream, { inputType: probe.type, inlineVolume: true });
+    const normalizedStream = await helpers.transcodeStreamToPcm(stream, song.title || song.url || metadata.title || 'audio stream');
+    const resource = createAudioResource(normalizedStream, { inputType: StreamType.Raw, inlineVolume: true });
 
     return { resource, metadata };
 };

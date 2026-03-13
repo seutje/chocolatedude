@@ -19,11 +19,6 @@ jest.mock('@discordjs/voice', () => {
         volume: { setVolume: jest.fn() }
     }));
 
-    const demuxProbe = jest.fn(async stream => ({
-        stream,
-        type: 'mp3'
-    }));
-
     const entersState = jest.fn(async target => target);
 
     return {
@@ -32,14 +27,16 @@ jest.mock('@discordjs/voice', () => {
         createAudioPlayer,
         createAudioResource,
         AudioPlayerStatus: { Idle: 'idle' },
-        demuxProbe,
         entersState,
+        StreamType: { Raw: 'raw' },
         NoSubscriberBehavior: { Play: 'play' },
         VoiceConnectionStatus: { Destroyed: 'destroyed', Ready: 'ready' }
     };
 });
 
 const { PassThrough } = require('stream');
+const { EventEmitter } = require('events');
+const https = require('https');
 const voice = require('@discordjs/voice');
 
 const originalFetch = global.fetch;
@@ -97,6 +94,7 @@ describe('play command Suno integration', () => {
             stream.end();
             return stream;
         });
+        const transcodeSpy = jest.spyOn(playCommand.helpers, 'transcodeStreamToPcm').mockImplementation(async stream => stream);
 
         const { serverQueue } = await runPlayCommand();
 
@@ -111,8 +109,11 @@ describe('play command Suno integration', () => {
         expect(queue.songs[0].duration).toBe('02:05');
 
         expect(openStreamSpy).toHaveBeenCalledWith('https://cdn.suno.com/audio/test.mp3', {});
+        expect(transcodeSpy).toHaveBeenCalled();
         expect(queue.player.play).toHaveBeenCalled();
+        expect(voice.createAudioResource).toHaveBeenCalledWith(expect.any(PassThrough), expect.objectContaining({ inputType: 'raw', inlineVolume: true }));
 
+        transcodeSpy.mockRestore();
         openStreamSpy.mockRestore();
     });
 
@@ -142,6 +143,7 @@ describe('play command Suno integration', () => {
             stream.end();
             return stream;
         });
+        const transcodeSpy = jest.spyOn(playCommand.helpers, 'transcodeStreamToPcm').mockImplementation(async stream => stream);
 
         const { serverQueue } = await runPlayCommand();
 
@@ -151,6 +153,7 @@ describe('play command Suno integration', () => {
         expect(queue.songs[0].title).toBe('Escaped Song & more');
         expect(queue.songs[0].duration).toBe('03:35');
 
+        transcodeSpy.mockRestore();
         openStreamSpy.mockRestore();
     });
 
@@ -180,6 +183,7 @@ describe('play command Suno integration', () => {
             stream.end();
             return stream;
         });
+        const transcodeSpy = jest.spyOn(playCommand.helpers, 'transcodeStreamToPcm').mockImplementation(async stream => stream);
 
         const { serverQueue } = await runPlayCommand();
 
@@ -189,6 +193,7 @@ describe('play command Suno integration', () => {
         expect(queue.songs[0].title).toBe('Percent Encoded Song');
         expect(queue.songs[0].duration).toBe('02:22');
 
+        transcodeSpy.mockRestore();
         openStreamSpy.mockRestore();
     });
 
@@ -213,6 +218,7 @@ describe('play command Suno integration', () => {
             stream.end();
             return stream;
         });
+        const transcodeSpy = jest.spyOn(playCommand.helpers, 'transcodeStreamToPcm').mockImplementation(async stream => stream);
 
         const { serverQueue } = await runPlayCommand();
 
@@ -222,6 +228,72 @@ describe('play command Suno integration', () => {
         expect(queue.songs[0].title).toBe('Fallback Song');
         expect(queue.songs[0].duration).toBe('05:01');
 
+        transcodeSpy.mockRestore();
         openStreamSpy.mockRestore();
+    });
+
+    test('ignores Suno silent placeholder audio and prefers the clip payload in __next_f data', async () => {
+        const html = `<!DOCTYPE html><html><head><meta property="og:title" content="You Follow?"></head><body><audio id="silent-audio" src="https://cdn1.suno.ai/sil-100.mp3"></audio><script>self.__next_f = self.__next_f || [];self.__next_f.push([1,"2c:[\\"$\\",\\"$L3d\\",null,{\\"clip\\":{\\"status\\":\\"complete\\",\\"title\\":\\"You Follow?\\",\\"audio_url\\":\\"https://cdn1.suno.ai/72db7d39-e8d6-4a36-94ba-71cdad5f6e8b.mp3\\",\\"metadata\\":{\\"duration\\":177.76}}}]"]);</script></body></html>`;
+
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            text: async () => html
+        });
+
+        const openStreamSpy = jest.spyOn(playCommand.helpers, 'openStreamFromUrl').mockImplementation(async () => {
+            const stream = new PassThrough();
+            stream.end();
+            return stream;
+        });
+        const transcodeSpy = jest.spyOn(playCommand.helpers, 'transcodeStreamToPcm').mockImplementation(async stream => stream);
+
+        const { serverQueue } = await runPlayCommand();
+
+        const queue = serverQueue.get('guild-id');
+        expect(queue).toBeDefined();
+        expect(queue.songs[0].streamUrl).toBe('https://cdn1.suno.ai/72db7d39-e8d6-4a36-94ba-71cdad5f6e8b.mp3');
+        expect(queue.songs[0].title).toBe('You Follow?');
+        expect(queue.songs[0].duration).toBe('02:57');
+
+        transcodeSpy.mockRestore();
+        openStreamSpy.mockRestore();
+    });
+
+    test('follows redirects when opening a resolved Suno audio URL', async () => {
+        const finalResponse = new PassThrough();
+        finalResponse.statusCode = 200;
+        finalResponse.headers = {};
+
+        const requests = [];
+        const getSpy = jest.spyOn(https, 'get').mockImplementation((url, options, callback) => {
+            requests.push({ url, options });
+
+            const request = new EventEmitter();
+            request.once = request.once.bind(request);
+
+            process.nextTick(() => {
+                if (requests.length === 1) {
+                    callback({
+                        statusCode: 302,
+                        headers: { location: '/audio/final.mp3' },
+                        resume: jest.fn()
+                    });
+                    return;
+                }
+
+                callback(finalResponse);
+            });
+
+            return request;
+        });
+
+        const stream = await playCommand.helpers.openStreamFromUrl('https://cdn.suno.com/audio/start.mp3');
+
+        expect(stream.statusCode).toBe(200);
+        expect(requests).toHaveLength(2);
+        expect(requests[0].url).toBe('https://cdn.suno.com/audio/start.mp3');
+        expect(requests[1].url).toBe('https://cdn.suno.com/audio/final.mp3');
+
+        getSpy.mockRestore();
     });
 });
