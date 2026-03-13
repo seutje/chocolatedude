@@ -328,6 +328,20 @@ async function fetchSunoSong(url) {
         return value;
     };
 
+    const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const extractQuotedObjectValue = (source, key) => {
+        const regex = new RegExp(`["']${escapeRegExp(key)}["']\\s*:\\s*(["'])((?:\\\\.|(?!\\1)[\\s\\S])*?)\\1`, 'i');
+        const match = source.match(regex);
+        return match ? decodeAndUnescape(match[2]) : undefined;
+    };
+
+    const extractMetaContent = (source, property) => {
+        const regex = new RegExp(`<meta[^>]+property=(["'])${escapeRegExp(property)}\\1[^>]+content=(["'])([\\s\\S]*?)\\2[^>]*>`, 'i');
+        const match = source.match(regex);
+        return match ? decodeAndUnescape(match[3]) : undefined;
+    };
+
     const stripTrailingSemicolons = text => text.replace(/;\s*$/g, '').trim();
 
     const tryUnwrapFunction = (expression, names, transform) => {
@@ -406,21 +420,20 @@ async function fetchSunoSong(url) {
         const searchSources = [sanitized, sanitized.replace(/\\+["']/g, match => match.slice(-1))];
 
         const candidatePatterns = [
-            { type: 'json', regex: /["']audio[_-]?url["']\s*:\s*["']([^"']+)["']/gi },
-            { type: 'meta', regex: /<meta[^>]+property=["']og:audio(?::url)?["'][^>]+content=["']([^"']+)["'][^>]*>/gi },
-            { type: 'audio', regex: /<audio[^>]+src=["']([^"']+)["'][^>]*>/gi }
+            { type: 'json', regex: /["']audio[_-]?url["']\s*:\s*(["'])((?:\\.|(?!\1)[\s\S])*?)\1/gi, valueGroup: 2 },
+            { type: 'meta', regex: /<meta[^>]+property=(["'])og:audio(?::url)?\1[^>]+content=(["'])([\s\S]*?)\2[^>]*>/gi, valueGroup: 3 },
+            { type: 'audio', regex: /<audio[^>]+src=(["'])([\s\S]*?)\1[^>]*>/gi, valueGroup: 2 }
         ];
         const candidates = [];
 
         for (const source of searchSources) {
-            for (const { type, regex } of candidatePatterns) {
+            for (const { type, regex, valueGroup } of candidatePatterns) {
                 for (const match of source.matchAll(regex)) {
-                    const url = decodeAndUnescape(match[1]);
+                    const url = decodeAndUnescape(match[valueGroup]);
                     if (!url) continue;
 
                     const index = match.index ?? 0;
                     const context = source.slice(Math.max(0, index - 500), Math.min(source.length, index + 1500));
-                    const titleMatch = context.match(/["']title["']\s*:\s*["']([^"']+)["']/i);
                     const durationMatch = context.match(/["'](?:audio_length_seconds|duration_seconds|duration)["']\s*:\s*["']?([\d.]+)["']?/i);
                     let score = 0;
 
@@ -435,7 +448,7 @@ async function fetchSunoSong(url) {
 
                     candidates.push({
                         url,
-                        title: titleMatch ? decodeAndUnescape(titleMatch[1]) : undefined,
+                        title: extractQuotedObjectValue(context, 'title'),
                         duration: durationMatch ? Number(durationMatch[1]) : undefined,
                         score
                     });
@@ -447,12 +460,12 @@ async function fetchSunoSong(url) {
             return null;
         }
 
-        const metaTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["'][^>]*>/i);
+        const metaTitle = extractMetaContent(html, 'og:title');
         candidates.sort((left, right) => right.score - left.score);
         const bestCandidate = candidates[0];
 
         return {
-            title: bestCandidate.title || (metaTitleMatch ? decodeAndUnescape(metaTitleMatch[1]) : undefined),
+            title: bestCandidate.title || metaTitle,
             audio_url: bestCandidate.url,
             audio_length_seconds: Number.isFinite(bestCandidate.duration) ? bestCandidate.duration : undefined
         };

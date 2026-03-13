@@ -232,6 +232,42 @@ describe('play command Suno integration', () => {
         openStreamSpy.mockRestore();
     });
 
+    test('preserves apostrophes in Suno titles when falling back to document scanning', async () => {
+        const escapedPayload = JSON.stringify({
+            song: {
+                title: "That's Why",
+                audio_length_seconds: 129,
+                audio_url: 'https://cdn.suno.com/audio/thats-why.mp3'
+            }
+        }).replace(/"/g, '\\"');
+
+        const html = `<!DOCTYPE html><html><head><meta property="og:title" content="That's Why"></head><body><script>self.__next_f = self.__next_f || [];self.__next_f.push([1,"/s/[id]","${escapedPayload}"]);</script></body></html>`;
+
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            text: async () => html
+        });
+
+        const openStreamSpy = jest.spyOn(playCommand.helpers, 'openStreamFromUrl').mockImplementation(async () => {
+            const stream = new PassThrough();
+            stream.end();
+            return stream;
+        });
+        const transcodeSpy = jest.spyOn(playCommand.helpers, 'transcodeStreamToPcm').mockImplementation(async stream => stream);
+
+        const { message, serverQueue } = await runPlayCommand();
+
+        const queue = serverQueue.get('guild-id');
+        expect(queue).toBeDefined();
+        expect(queue.songs[0].streamUrl).toBe('https://cdn.suno.com/audio/thats-why.mp3');
+        expect(queue.songs[0].title).toBe("That's Why");
+        expect(queue.songs[0].duration).toBe('02:09');
+        expect(message.channel.send).toHaveBeenCalledWith(expect.stringContaining("That's Why"));
+
+        transcodeSpy.mockRestore();
+        openStreamSpy.mockRestore();
+    });
+
     test('ignores Suno silent placeholder audio and prefers the clip payload in __next_f data', async () => {
         const html = `<!DOCTYPE html><html><head><meta property="og:title" content="You Follow?"></head><body><audio id="silent-audio" src="https://cdn1.suno.ai/sil-100.mp3"></audio><script>self.__next_f = self.__next_f || [];self.__next_f.push([1,"2c:[\\"$\\",\\"$L3d\\",null,{\\"clip\\":{\\"status\\":\\"complete\\",\\"title\\":\\"You Follow?\\",\\"audio_url\\":\\"https://cdn1.suno.ai/72db7d39-e8d6-4a36-94ba-71cdad5f6e8b.mp3\\",\\"metadata\\":{\\"duration\\":177.76}}}]"]);</script></body></html>`;
 
